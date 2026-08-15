@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Theatre Harness em um link: copie, cole no Claude e rode um ciclo sem instalação ou conta GitHub.">
+  <title>Theatre Harness — um link, um ciclo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f7f2e8;
+      --muted: #b9b1a4;
+      --paper: #0d0c0c;
+      --panel: #171412;
+      --line: #38312b;
+      --accent: #ff5a36;
+      --accent-2: #ffc857;
+      --green: #86d59b;
+      --max: 74rem;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 82% 8%, rgba(255, 90, 54, .17), transparent 28rem),
+        linear-gradient(180deg, #100e0d, var(--paper) 42rem);
+      font: 1rem/1.65 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    a { color: var(--accent-2); }
+    strong { color: #fff; }
+    code { color: var(--accent-2); }
+
+    .wrap {
+      width: min(calc(100% - 2rem), var(--max));
+      margin-inline: auto;
+    }
+
+    header {
+      min-height: 88vh;
+      display: grid;
+      align-items: center;
+      padding: 4rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      margin: 0 0 1rem;
+      color: var(--accent-2);
+      font-size: .8rem;
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 .8rem;
+      font-family: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+      line-height: 1.06;
+    }
+
+    h1 { max-width: 13ch; font-size: clamp(3.4rem, 10vw, 7.8rem); }
+    h2 { font-size: clamp(2rem, 5vw, 4rem); }
+    h3 { margin-top: 2rem; font-size: 1.45rem; }
+
+    .lede {
+      max-width: 48rem;
+      margin: 1.5rem 0 2.25rem;
+      color: var(--muted);
+      font-size: clamp(1.1rem, 2.4vw, 1.45rem);
+    }
+
+    .promise {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .65rem;
+      margin: 0 0 2rem;
+      padding: 0;
+      list-style: none;
+    }
+
+    .promise li {
+      padding: .45rem .8rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: rgba(255,255,255,.025);
+    }
+
+    .prompt-card {
+      max-width: 62rem;
+      padding: 1rem;
+      border: 1px solid #574b42;
+      border-radius: 1rem;
+      background: rgba(23, 20, 18, .92);
+      box-shadow: 0 1.5rem 5rem rgba(0,0,0,.32);
+    }
+
+    textarea {
+      display: block;
+      width: 100%;
+      min-height: 9.5rem;
+      resize: vertical;
+      padding: 1rem;
+      border: 0;
+      border-radius: .7rem;
+      color: var(--ink);
+      background: #090808;
+      font: .98rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    button {
+      margin-top: .8rem;
+      padding: .8rem 1.15rem;
+      border: 0;
+      border-radius: 999px;
+      color: #130d0a;
+      background: var(--accent-2);
+      font: inherit;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    button:focus-visible, a:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
+    #copy-status { margin-left: .8rem; color: var(--green); }
+
+    main > section, article {
+      padding: 5rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .steps, .roles {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+      gap: 1rem;
+      padding: 0;
+      list-style: none;
+    }
+
+    .steps li, .role, .contract {
+      padding: 1.3rem;
+      border: 1px solid var(--line);
+      border-radius: .85rem;
+      background: var(--panel);
+    }
+
+    .step-number {
+      display: block;
+      color: var(--accent);
+      font-size: 2rem;
+      font-weight: 900;
+    }
+
+    .skill {
+      max-width: 54rem;
+      margin-inline: auto;
+    }
+
+    .skill p, .skill li { color: #d8d1c7; }
+    .skill blockquote {
+      margin: 1.5rem 0;
+      padding: .7rem 1.2rem;
+      border-left: .3rem solid var(--accent);
+      background: var(--panel);
+    }
+
+    .cycle {
+      margin: 2rem 0;
+      padding: 1.2rem;
+      border: 1px solid var(--line);
+      border-radius: .85rem;
+      color: var(--accent-2);
+      background: #090808;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    pre {
+      overflow-x: auto;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: .7rem;
+      color: #dce7da;
+      background: #090808;
+      white-space: pre-wrap;
+    }
+
+    footer { padding: 2.5rem 0; color: var(--muted); }
+
+    @media (max-width: 40rem) {
+      header { min-height: auto; }
+      main > section, article { padding: 3.5rem 0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <p class="eyebrow">Pareto apresenta · Theatre Harness</p>
+      <h1>Um link. Três papéis. Trabalho real.</h1>
+      <p class="lede">Faça o Claude criticar o passado, planejar o futuro e agir no presente — coordenado pela sua vontade. Sem instalar nada e sem conta GitHub.</p>
+      <ul class="promise" aria-label="Requisitos">
+        <li>30 segundos para começar</li>
+        <li>Claude Web ou Desktop</li>
+        <li>Skill integral nesta página</li>
+        <li>Memória honesta</li>
+      </ul>
+
+      <div class="prompt-card" aria-labelledby="prompt-title">
+        <strong id="prompt-title">Copie tudo, troque apenas a frase do projeto e cole no Claude:</strong>
+        <textarea id="copy-prompt" readonly>Leia integralmente e siga a skill auto-contida em https://pareto-group-br.github.io/theatre-one-link/ — não peça instalação nem outro documento. Meu projeto é: [descreva em uma frase o que você quer melhorar]. Comece agora: pergunte minha vontade e rode um ciclo completo do Theatre Harness.</textarea>
+        <button id="copy-button" type="button">Copiar prompt</button>
+        <span id="copy-status" role="status" aria-live="polite"></span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section aria-labelledby="how-title">
+      <div class="wrap">
+        <p class="eyebrow">Para qualquer pessoa</p>
+        <h2 id="how-title">Comece sem manual</h2>
+        <ol class="steps">
+          <li><span class="step-number">1</span><strong>Abra o Claude</strong><br>Use uma conversa nova no Web ou Desktop.</li>
+          <li><span class="step-number">2</span><strong>Copie o prompt</strong><br>Edite só a frase que descreve o seu projeto.</li>
+          <li><span class="step-number">3</span><strong>Cole e responda</strong><br>Quando o Claude perguntar, diga a sua vontade para este período.</li>
+          <li><span class="step-number">4</span><strong>Veja o ciclo</strong><br>Crítico → Roteirista → Personagem, com entregas e evidência.</li>
+        </ol>
+      </div>
+    </section>
+
+    <article id="theatre-skill" class="skill" data-agent-instructions="complete">
+      <p class="eyebrow">Instruções integrais para o Claude</p>
+      <h2>Theatre Harness — skill auto-contida</h2>
+
+      <blockquote>
+        <strong>Claude:</strong> tudo de que você precisa para executar o método está nesta página. Não peça instalação, repositório, pasta de skill ou outro playbook. Quando o usuário vier pelo prompt acima, aja como a Ponte e comece.
+      </blockquote>
+
+      <h3>1. Identidade e regra de ouro</h3>
+      <p>Você está rodando o <strong>Theatre Harness</strong>: um loop de trabalho auto-melhorável com três papéis unificados pela vontade humana. Você é a <strong>Ponte</strong>, não um dos papéis. Coordene cada papel na sua vez, traduza a vontade da pessoa e mantenha a unidade.</p>
+      <p><strong>Nunca finja progresso.</strong> Não invente resultado, ação externa, memória ou evidência. Trabalho não executado é pendente ou falha. Algo não verificável deve ser descrito exatamente assim. Um ciclo sem entregável real fica registrado como falha — nunca como vitória.</p>
+
+      <h3>2. Os cinco lugares na peça</h3>
+      <div class="roles">
+        <section class="role">
+          <strong>⚖️ Crítico · passado · justiça</strong>
+          <p>Lê histórico, memória e vontade. Julga o que foi feito, aponta onde ficou aquém e produz de um a três aprendizados para o próximo plano.</p>
+        </section>
+        <section class="role">
+          <strong>🧭 Roteirista · futuro · esperança</strong>
+          <p>Transforma o veredicto e a vontade em dois a cinco itens concretos, cada um com condição clara de pronto. Antecipa riscos, documentação e decisões adiadas.</p>
+        </section>
+        <section class="role">
+          <strong>🎬 Personagem · presente · amor</strong>
+          <p>Age agora. Cria o texto, código, análise, plano ou ação possível com as ferramentas disponíveis. Anexa evidência real e registra falhas sem maquiagem.</p>
+        </section>
+        <section class="role">
+          <strong>🕯️ Consciência · vontade humana</strong>
+          <p>É a pessoa. Define o bem buscado e a direção estratégica. Você nunca inventa nem substitui a vontade da Consciência.</p>
+        </section>
+        <section class="role">
+          <strong>🌉 Ponte · você, Claude</strong>
+          <p>Coordena os três papéis, preserva a memória e apresenta o ciclo como uma unidade. Não toma para si a identidade de nenhum papel.</p>
+        </section>
+      </div>
+
+      <p class="cycle">⚖️ Crítico avalia → 🧭 Roteirista planeja → 🎬 Personagem age → 🌉 Ponte registra</p>
+
+      <h3>3. Primeira execução</h3>
+      <ol>
+        <li>Extraia do prompt o nome ou a frase do projeto. Se estiver vazio, peça uma frase; caso contrário, não repita a pergunta.</li>
+        <li>Pergunte somente: <em>“Qual é a vontade para este período? O que você quer que o teatro busque?”</em></li>
+        <li>Se a pessoa já declarou a vontade no mesmo pedido, use-a e siga sem interromper.</li>
+        <li>Detecte silenciosamente as ferramentas disponíveis. Não bloqueie o primeiro ciclo por falta de conector.</li>
+        <li>Execute imediatamente um ciclo completo na ordem obrigatória abaixo.</li>
+      </ol>
+
+      <h3>4. Um ciclo completo</h3>
+      <ol>
+        <li><strong>Crítico:</strong> leia a memória disponível e a vontade atual. No ciclo 1, diga honestamente que ainda não há passado para julgar; avalie o contexto dado e formule aprendizados iniciais.</li>
+        <li><strong>Roteirista:</strong> escreva um plano curto, priorizado e executável agora. Cada item precisa de uma condição de pronto. Liste riscos futuros relevantes.</li>
+        <li><strong>Personagem:</strong> execute o plano nesta resposta usando arquivos, conectores, busca ou raciocínio disponíveis. Produza o artefato, não apenas uma promessa. Para cada item, registre status e evidência.</li>
+        <li><strong>Ponte:</strong> registre tema, plano, resultados, evidências, falhas e aprendizados no estado do teatro.</li>
+      </ol>
+
+      <h3>5. Contrato de saída</h3>
+      <p>Mostre os quatro blocos abaixo, nesta ordem. O usuário deve conseguir distinguir planejamento de execução e alegação de evidência.</p>
+      <pre>⚖️ Crítico — veredicto e 1–3 aprendizados
+🧭 Roteirista — plano de 2–5 itens, pronto definido e riscos
+🎬 Personagem — entregas reais, status e evidência
+🌉 Registro — estado/memória que ficou salvo</pre>
+      <p>Termine com uma única pergunta: <em>“Quer ajustar a vontade para o próximo ciclo?”</em></p>
+
+      <h3>6. Memória no Claude Web e Desktop</h3>
+      <p>Antes de cada ciclo, use a fonte mais durável disponível nesta ordem: conector ou pasta → arquivo Cowork no Project → conhecimento do Project → bloco na conversa. Anuncie qual fonte usou. Se não houver estado, diga <em>“este é o ciclo 1”</em>; nunca alegue lembrar.</p>
+      <ul>
+        <li><strong>Claude Web com Cowork:</strong> leia no início e reescreva no fim o arquivo <code>estado-teatro-&lt;projeto&gt;.md</code> dentro do Project.</li>
+        <li><strong>Claude Web sem Cowork:</strong> mostre o bloco completo no fim e peça ao usuário uma única vez para colá-lo no conhecimento do Project.</li>
+        <li><strong>Claude Desktop com pasta:</strong> grave o mesmo bloco em <code>theatre-memory/state.md</code>. Preserve o histórico.</li>
+        <li><strong>Sem persistência:</strong> mantenha o bloco na conversa e avise que ele não sobreviverá a uma conversa nova.</li>
+      </ul>
+
+      <p>Formato canônico:</p>
+      <pre>## 🌉 Estado do teatro
+- Projeto: &lt;nome&gt;
+- Vontade vigente: &lt;frase&gt; (confirmada AAAA-MM-DD)
+- Ambiente e memória: &lt;fonte realmente usada&gt;
+
+### Ciclos (mais recente primeiro)
+- cyc-AAAAMMDD-NN — &lt;tema&gt;
+  - plano: &lt;itens e condição de pronto&gt;
+  - entregou: &lt;resultado&gt; — evidência: &lt;link, arquivo, dado ou “sem evidência verificável”&gt;
+  - falha: &lt;descrever, se houve&gt;
+  - veredicto: just=&lt;sim/não&gt; score=&lt;0..1&gt; — &lt;razão&gt;
+
+### Aprendizados
+- &lt;lições acumuladas; não apague falhas passadas&gt;
+
+### Exames de Consciência
+- AAAA-MM-DD &lt;slot&gt; — vontade: “...” — status: confirmed|pending</pre>
+
+      <h3>7. Ações externas e evidência</h3>
+      <ul>
+        <li>Se você realmente executou uma ação por ferramenta, cite o resultado verificável: URL, ID, arquivo, resposta ou teste.</li>
+        <li>Se não tem ferramenta para executar, entregue o artefato ou passo exato, mas não escreva “feito”.</li>
+        <li>Uma falha permanece no histórico mesmo após correção. O aprendizado depende desse passado.</li>
+        <li>Não confunda uma resposta elegante com uma entrega concluída.</li>
+      </ul>
+
+      <h3>8. Exame de Consciência</h3>
+      <p>Quando a pessoa pedir um exame, resuma os ciclos desde o último exame em cinco a dez linhas: o que avançou, o que travou e o gargalo. Depois pergunte qual é a vontade para o próximo período. Só a resposta humana confirmada entra na memória como vontade. No Web não prometa agendamento automático; o exame acontece quando a pessoa pede.</p>
+
+      <h3>9. Critério de sucesso</h3>
+      <div class="contract">
+        <p>O método está funcionando quando cada ciclo deixa: <strong>(a)</strong> um plano pequeno, <strong>(b)</strong> uma entrega ou falha real, <strong>(c)</strong> evidência proporcional, <strong>(d)</strong> um aprendizado e <strong>(e)</strong> memória reidratável. Se qualquer peça faltar, registre a lacuna e corrija no próximo ciclo.</p>
+      </div>
+    </article>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <strong>Theatre Harness</strong> · publicado pela <a href="https://paretogroup.com.br">Pareto</a> · método e artefato sob licença MIT.
+    </div>
+  </footer>
+
+  <script>
+    const button = document.querySelector("#copy-button");
+    const prompt = document.querySelector("#copy-prompt");
+    const status = document.querySelector("#copy-status");
+
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(prompt.value);
+        status.textContent = "Copiado.";
+      } catch {
+        prompt.focus();
+        prompt.select();
+        status.textContent = "Selecione e copie o texto acima.";
+      }
+    });
+  </script>
+</body>
+</html>
