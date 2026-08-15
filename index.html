@@ -143,6 +143,26 @@
     button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
     #copy-status { margin-left: .8rem; color: var(--green); }
 
+    .proof-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(16rem, .6fr);
+      gap: 1rem;
+      align-items: start;
+    }
+
+    .proof-panel, .proof-result {
+      padding: 1.3rem;
+      border: 1px solid var(--line);
+      border-radius: .85rem;
+      background: var(--panel);
+    }
+
+    .proof-panel textarea { min-height: 15rem; }
+    .proof-result { color: var(--muted); white-space: pre-line; }
+    .proof-result[data-status="pass"] { border-color: var(--green); color: var(--green); }
+    .proof-result[data-status="fail"] { border-color: var(--accent); color: #ffad9b; }
+    .privacy-note { color: var(--muted); }
+
     main > section, article {
       padding: 5rem 0;
       border-bottom: 1px solid var(--line);
@@ -209,6 +229,7 @@
     @media (max-width: 40rem) {
       header { min-height: auto; }
       main > section, article { padding: 3.5rem 0; }
+      .proof-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -249,6 +270,33 @@
           <li><span class="step-number">3</span><strong>Cole e responda</strong><br>Quando o Claude perguntar, diga a sua vontade para este período.</li>
           <li><span class="step-number">4</span><strong>Veja o ciclo</strong><br>Crítico → Roteirista → Personagem, com entregas e evidência.</li>
         </ol>
+      </div>
+    </section>
+
+    <section id="first-cycle-proof" data-proof-threshold-ms="300000" aria-labelledby="proof-title">
+      <div class="wrap">
+        <p class="eyebrow">Prova do primeiro ciclo</p>
+        <h2 id="proof-title">Confirme em menos de 5 minutos</h2>
+        <p>O cronômetro começa quando você toca em <strong>Copiar prompt</strong>. Depois que o Claude responder, volte, cole a resposta e confira se o ciclo veio completo.</p>
+        <div class="proof-grid">
+          <div class="proof-panel">
+            <label for="cycle-output">Resposta do Claude</label>
+            <textarea id="cycle-output" placeholder="Cole aqui a resposta completa do Claude"></textarea>
+            <button id="verify-button" type="button">Verificar ciclo</button>
+          </div>
+          <div>
+            <strong>O verificador procura:</strong>
+            <ul>
+              <li>Crítico → Roteirista → Personagem → Registro, nessa ordem</li>
+              <li>evidência explícita</li>
+              <li>bloco <code>## 🌉 Estado do teatro</code></li>
+              <li>conclusão em até 5 minutos</li>
+            </ul>
+            <p class="privacy-note">Tudo roda localmente no navegador. A resposta não é enviada nem armazenada fora desta aba.</p>
+            <div id="proof-result" class="proof-result" role="status" aria-live="polite" data-status="idle">Copie o prompt para iniciar a prova.</div>
+            <button id="copy-proof-button" type="button" hidden>Copiar comprovante</button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -372,7 +420,16 @@
     const description = document.querySelector("#project-description");
     const prompt = document.querySelector("#copy-prompt");
     const status = document.querySelector("#copy-status");
+    const proofSection = document.querySelector("#first-cycle-proof");
+    const cycleOutput = document.querySelector("#cycle-output");
+    const verifyButton = document.querySelector("#verify-button");
+    const proofResult = document.querySelector("#proof-result");
+    const copyProofButton = document.querySelector("#copy-proof-button");
     const canonicalUrl = "https://pareto-group-br.github.io/theatre-one-link/";
+    const proofThresholdMs = Number(proofSection.dataset.proofThresholdMs);
+    const storageKey = "theatre-one-link-trial-started-at";
+    let trialStartedAt = Number(sessionStorage.getItem(storageKey)) || null;
+    let lastProof = "";
 
     const buildPrompt = (projectDescription) => {
       const project = projectDescription.trim() || "[descreva em uma frase o que você quer melhorar]";
@@ -387,7 +444,17 @@
     description.addEventListener("input", updatePrompt);
     updatePrompt();
 
+    const startTrial = () => {
+      trialStartedAt = Date.now();
+      sessionStorage.setItem(storageKey, String(trialStartedAt));
+      cycleOutput.value = "";
+      copyProofButton.hidden = true;
+      proofResult.dataset.status = "idle";
+      proofResult.textContent = "Cronômetro iniciado. Cole o prompt no Claude e volte com a resposta completa. Copiar de novo reinicia a prova.";
+    };
+
     button.addEventListener("click", async () => {
+      startTrial();
       try {
         await navigator.clipboard.writeText(prompt.value);
         status.textContent = "Copiado.";
@@ -395,6 +462,45 @@
         prompt.focus();
         prompt.select();
         status.textContent = "Selecione e copie o texto acima.";
+      }
+    });
+
+    const verifyCycle = () => {
+      if (trialStartedAt === null) {
+        proofResult.dataset.status = "fail";
+        proofResult.textContent = "A prova ainda não começou. Copie o prompt primeiro.";
+        copyProofButton.hidden = true;
+        return;
+      }
+
+      const output = cycleOutput.value;
+      const roleLabels = ["⚖️ Crítico", "🧭 Roteirista", "🎬 Personagem", "🌉 Registro"];
+      const positions = roleLabels.map((label) => output.indexOf(label));
+      const orderedRoles = positions.every((position, index) =>
+        position >= 0 && (index === 0 || position > positions[index - 1]));
+      const hasEvidence = /evid[êe]ncia/i.test(output);
+      const hasMemory = /##\s*🌉\s*Estado do teatro/i.test(output);
+      const elapsedMs = Math.max(0, Date.now() - trialStartedAt);
+      const elapsedSeconds = Math.ceil(elapsedMs / 1000);
+      const withinFiveMinutes = elapsedMs <= proofThresholdMs;
+      const checks = [orderedRoles, hasEvidence, hasMemory, withinFiveMinutes];
+      const labels = ["papéis em ordem", "evidência", "memória", "até 5 minutos"];
+      const checklist = labels.map((label, index) => `${checks[index] ? "✓" : "✗"} ${label}`).join(" · ");
+      const passed = checks.every(Boolean);
+
+      lastProof = `${passed ? "PASSOU" : "INCOMPLETO"} — prova local Theatre Harness — ${elapsedSeconds}s — ${checklist} — ${canonicalUrl}`;
+      proofResult.dataset.status = passed ? "pass" : "fail";
+      proofResult.textContent = lastProof;
+      copyProofButton.hidden = false;
+    };
+
+    verifyButton.addEventListener("click", verifyCycle);
+    copyProofButton.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(lastProof);
+        proofResult.textContent = `${lastProof}\nComprovante copiado.`;
+      } catch {
+        proofResult.textContent = `${lastProof}\nNão consegui copiar automaticamente; selecione o texto acima.`;
       }
     });
   </script>
