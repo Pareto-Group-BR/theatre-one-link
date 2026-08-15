@@ -101,17 +101,31 @@
       box-shadow: 0 1.5rem 5rem rgba(0,0,0,.32);
     }
 
-    textarea {
+    label {
+      display: block;
+      margin-bottom: .45rem;
+      font-weight: 800;
+    }
+
+    input, textarea {
       display: block;
       width: 100%;
-      min-height: 9.5rem;
-      resize: vertical;
       padding: 1rem;
-      border: 0;
+      border: 1px solid #4c423a;
       border-radius: .7rem;
       color: var(--ink);
       background: #090808;
       font: .98rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    input { margin-bottom: 1rem; }
+    input::placeholder { color: #8f867d; }
+
+    textarea {
+      min-height: 9.5rem;
+      resize: vertical;
+      color: #ddd5ca;
+      background: #11100f;
     }
 
     button {
@@ -126,7 +140,7 @@
       cursor: pointer;
     }
 
-    button:focus-visible, a:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
+    button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
     #copy-status { margin-left: .8rem; color: var(--green); }
 
     main > section, article {
@@ -212,8 +226,12 @@
       </ul>
 
       <div class="prompt-card" aria-labelledby="prompt-title">
-        <strong id="prompt-title">Copie tudo, troque apenas a frase do projeto e cole no Claude:</strong>
-        <textarea id="copy-prompt" readonly>Leia integralmente e siga a skill auto-contida em https://pareto-group-br.github.io/theatre-one-link/ — não peça instalação nem outro documento. Meu projeto é: [descreva em uma frase o que você quer melhorar]. Comece agora: pergunte minha vontade e rode um ciclo completo do Theatre Harness.</textarea>
+        <strong id="prompt-title">Descreva o projeto; o prompt fica pronto sozinho:</strong>
+        <label for="project-description">O que você quer melhorar?</label>
+        <input id="project-description" type="text" autocomplete="off" placeholder="Ex.: reduzir o abandono no onboarding de clientes">
+        <label for="copy-prompt">Prompt gerado</label>
+        <textarea id="copy-prompt" readonly aria-describedby="prompt-help">Leia integralmente e siga a skill auto-contida em https://pareto-group-br.github.io/theatre-one-link/ — não peça instalação nem outro documento. Meu projeto é: [descreva em uma frase o que você quer melhorar]. Comece agora: pergunte minha vontade e rode um ciclo completo do Theatre Harness.</textarea>
+        <small id="prompt-help">Digite acima. Não é preciso editar o prompt.</small><br>
         <button id="copy-button" type="button">Copiar prompt</button>
         <span id="copy-status" role="status" aria-live="polite"></span>
       </div>
@@ -227,7 +245,7 @@
         <h2 id="how-title">Comece sem manual</h2>
         <ol class="steps">
           <li><span class="step-number">1</span><strong>Abra o Claude</strong><br>Use uma conversa nova no Web ou Desktop.</li>
-          <li><span class="step-number">2</span><strong>Copie o prompt</strong><br>Edite só a frase que descreve o seu projeto.</li>
+          <li><span class="step-number">2</span><strong>Descreva e copie</strong><br>Digite o projeto no campo; a página gera o prompt completo.</li>
           <li><span class="step-number">3</span><strong>Cole e responda</strong><br>Quando o Claude perguntar, diga a sua vontade para este período.</li>
           <li><span class="step-number">4</span><strong>Veja o ciclo</strong><br>Crítico → Roteirista → Personagem, com entregas e evidência.</li>
         </ol>
@@ -351,8 +369,23 @@
 
   <script>
     const button = document.querySelector("#copy-button");
+    const description = document.querySelector("#project-description");
     const prompt = document.querySelector("#copy-prompt");
     const status = document.querySelector("#copy-status");
+    const canonicalUrl = "https://pareto-group-br.github.io/theatre-one-link/";
+
+    const buildPrompt = (projectDescription) => {
+      const project = projectDescription.trim() || "[descreva em uma frase o que você quer melhorar]";
+      return `Leia integralmente e siga a skill auto-contida em ${canonicalUrl} — não peça instalação nem outro documento. Meu projeto é: ${project}. Comece agora: pergunte minha vontade e rode um ciclo completo do Theatre Harness.`;
+    };
+
+    const updatePrompt = () => {
+      prompt.value = buildPrompt(description.value);
+      status.textContent = "";
+    };
+
+    description.addEventListener("input", updatePrompt);
+    updatePrompt();
 
     button.addEventListener("click", async () => {
       try {
