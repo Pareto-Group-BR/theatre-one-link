@@ -163,6 +163,15 @@
     .proof-result[data-status="fail"] { border-color: var(--accent); color: #ffad9b; }
     .privacy-note { color: var(--muted); }
     .secondary-action { margin-left: .45rem; color: var(--ink); background: #39312b; }
+    .recording-controls {
+      margin: 1rem 0;
+      padding: 1rem;
+      border: 1px dashed #5b5047;
+      border-radius: .75rem;
+      background: #151311;
+    }
+    .recording-controls p { margin: .55rem 0 0; }
+    #recording-status { display: block; margin-top: .65rem; color: var(--green); }
 
     main > section, article {
       padding: 5rem 0;
@@ -280,6 +289,14 @@
         <p class="eyebrow">Prova do primeiro ciclo</p>
         <h2 id="proof-title">Confirme em menos de 5 minutos</h2>
         <p>O cronômetro começa quando você toca em <strong>Começar no Claude</strong>. Depois que o Claude responder, volte, cole a resposta e confira se o ciclo veio completo.</p>
+        <div class="recording-controls" aria-labelledby="recording-title">
+          <strong id="recording-title">Vídeo da prova (opcional)</strong>
+          <p>Antes de começar, grave a tela sem instalar nada. No seletor do navegador, escolha a tela ou janela que mostrará o Claude; capturar só esta aba não registra a conversa.</p>
+          <button id="start-recording-button" class="secondary-action" type="button">Gravar prova em vídeo</button>
+          <button id="stop-recording-button" type="button" hidden>Encerrar e baixar vídeo</button>
+          <span id="recording-status" role="status" aria-live="polite">O vídeo fica somente no navegador e só é baixado no seu dispositivo. Nenhum upload é feito.</span>
+          <a id="recording-download" hidden download></a>
+        </div>
         <div class="proof-grid">
           <div class="proof-panel">
             <label for="cycle-output">Resposta do Claude</label>
@@ -294,7 +311,7 @@
               <li>bloco <code>## 🌉 Estado do teatro</code></li>
               <li>conclusão em até 5 minutos</li>
             </ul>
-            <p class="privacy-note">Tudo roda localmente no navegador. A resposta não é enviada nem armazenada fora desta aba. O recibo JSON inclui somente metadados e o SHA-256 da resposta — nunca o projeto nem o conteúdo colado.</p>
+            <p class="privacy-note">Tudo roda localmente no navegador. A resposta e o vídeo não são enviados nem armazenados fora desta aba. O recibo JSON inclui somente metadados e os hashes SHA-256 da resposta e, quando gravado, do WebM — nunca o projeto, a resposta ou os bytes do vídeo.</p>
             <div id="proof-result" class="proof-result" role="status" aria-live="polite" data-status="idle">Copie o prompt para iniciar a prova.</div>
             <button id="copy-proof-button" type="button" hidden>Copiar comprovante</button>
             <button id="download-proof-button" class="secondary-action" type="button" hidden>Baixar recibo JSON</button>
@@ -432,6 +449,10 @@
     const copyProofButton = document.querySelector("#copy-proof-button");
     const downloadProofButton = document.querySelector("#download-proof-button");
     const proofDownload = document.querySelector("#proof-download");
+    const startRecordingButton = document.querySelector("#start-recording-button");
+    const stopRecordingButton = document.querySelector("#stop-recording-button");
+    const recordingStatus = document.querySelector("#recording-status");
+    const recordingDownload = document.querySelector("#recording-download");
     const canonicalUrl = "https://pareto-group-br.github.io/theatre-one-link/";
     const claudeNewConversationUrl = "https://claude.ai/new";
     const proofThresholdMs = Number(proofSection.dataset.proofThresholdMs);
@@ -439,6 +460,12 @@
     let trialStartedAt = Number(sessionStorage.getItem(storageKey)) || null;
     let lastProof = "";
     let lastProofReceipt = null;
+    let screenStream = null;
+    let screenRecorder = null;
+    let recordedChunks = [];
+    let recordingStartedAt = null;
+    let videoFinalizationState = "none";
+    let lastVideoProof = null;
 
     const buildPrompt = (projectDescription) => {
       const project = projectDescription.trim() || "[descreva em uma frase o que você quer melhorar]";
@@ -455,6 +482,11 @@
 
     const startTrial = () => {
       trialStartedAt = Date.now();
+      if (lastVideoProof?.completedAtEpochMs <= trialStartedAt) {
+        lastVideoProof = null;
+        videoFinalizationState = "none";
+        recordingStatus.textContent = "Novo ciclo iniciado: qualquer vídeo anterior foi desvinculado. Para vincular um vídeo, comece a gravação antes deste botão.";
+      }
       sessionStorage.setItem(storageKey, String(trialStartedAt));
       cycleOutput.value = "";
       copyProofButton.hidden = true;
@@ -487,11 +519,113 @@
       }
     });
 
+    const finishRecording = () => {
+      if (screenRecorder?.state === "recording") screenRecorder.stop();
+      for (const track of screenStream?.getTracks?.() || []) track.stop();
+    };
+
+    const sha256BytesHex = async (bytes) => {
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    };
+
+    startRecordingButton.addEventListener("click", async () => {
+      if (!navigator.mediaDevices?.getDisplayMedia || typeof MediaRecorder === "undefined") {
+        recordingStatus.textContent = "Este navegador não oferece gravação de tela. Use a captura nativa do sistema e preserve o vídeo junto do recibo.";
+        return;
+      }
+
+      recordedChunks = [];
+      recordingStartedAt = null;
+      videoFinalizationState = "none";
+      lastVideoProof = null;
+      try {
+        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        const preferredMimeType = MediaRecorder.isTypeSupported?.("video/webm;codecs=vp9")
+          ? "video/webm;codecs=vp9"
+          : "video/webm";
+        screenRecorder = new MediaRecorder(screenStream, { mimeType: preferredMimeType });
+        screenRecorder.addEventListener("dataavailable", (event) => {
+          if (event.data?.size > 0) recordedChunks.push(event.data);
+        });
+        screenRecorder.addEventListener("stop", async () => {
+          stopRecordingButton.hidden = true;
+          if (recordedChunks.length === 0) {
+            videoFinalizationState = "failed";
+            screenStream = null;
+            screenRecorder = null;
+            recordedChunks = [];
+            recordingStartedAt = null;
+            startRecordingButton.hidden = false;
+            recordingStatus.textContent = "A gravação terminou sem dados. Use a captura nativa do sistema; nenhuma prova em vídeo foi gerada.";
+            return;
+          }
+          videoFinalizationState = "hashing";
+          recordingStatus.textContent = "Finalizando o vídeo e calculando o SHA-256 local…";
+          const completedAt = Date.now();
+          const mimeType = screenRecorder.mimeType || "video/webm";
+          const video = new Blob(recordedChunks, { type: mimeType });
+          const fileName = `theatre-proof-${completedAt}.webm`;
+          try {
+            const videoBytes = new Uint8Array(await video.arrayBuffer());
+            const sha256 = await sha256BytesHex(videoBytes);
+            lastVideoProof = {
+              status: "linked",
+              digestAlgorithm: "SHA-256",
+              sha256,
+              byteLength: video.size,
+              mimeType,
+              fileName,
+              startedAtEpochMs: recordingStartedAt,
+              completedAtEpochMs: completedAt,
+            };
+            const videoUrl = URL.createObjectURL(video);
+            recordingDownload.href = videoUrl;
+            recordingDownload.download = fileName;
+            recordingDownload.click();
+            URL.revokeObjectURL(videoUrl);
+            videoFinalizationState = "linked";
+            recordingStatus.textContent = `Vídeo baixado e vinculado ao recibo por SHA-256 (${sha256.slice(0, 12)}…). A observação humana ainda precisa julgar a qualidade do ciclo.`;
+          } catch {
+            lastVideoProof = null;
+            videoFinalizationState = "failed";
+            recordingStatus.textContent = "O SHA-256 falhou. Vídeo e recibo não foram emitidos para esta gravação; tente gravar novamente.";
+          } finally {
+            screenStream = null;
+            screenRecorder = null;
+            recordedChunks = [];
+            recordingStartedAt = null;
+            startRecordingButton.hidden = false;
+          }
+        });
+        for (const track of screenStream.getTracks()) {
+          track.addEventListener?.("ended", finishRecording, { once: true });
+        }
+        screenRecorder.start(1000);
+        recordingStartedAt = Date.now();
+        videoFinalizationState = "recording";
+        startRecordingButton.hidden = true;
+        stopRecordingButton.hidden = false;
+        recordingStatus.textContent = "Gravação ativa. Agora use Começar no Claude; ao voltar, encerre e baixe o vídeo.";
+      } catch {
+        for (const track of screenStream?.getTracks?.() || []) track.stop();
+        screenStream = null;
+        screenRecorder = null;
+        recordedChunks = [];
+        recordingStartedAt = null;
+        videoFinalizationState = "none";
+        startRecordingButton.hidden = false;
+        stopRecordingButton.hidden = true;
+        recordingStatus.textContent = "A gravação não começou: permissão negada ou captura indisponível. Nada foi gravado nem enviado; use a captura nativa do sistema.";
+      }
+    });
+
+    stopRecordingButton.addEventListener("click", finishRecording);
+
     const sha256Hex = async (value) => {
       const bytes = new TextEncoder().encode(value);
-      const digest = await crypto.subtle.digest("SHA-256", bytes);
       return {
-        hex: Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(""),
+        hex: await sha256BytesHex(bytes),
         byteLength: bytes.byteLength,
       };
     };
@@ -501,6 +635,30 @@
         proofResult.dataset.status = "fail";
         proofResult.textContent = "A prova ainda não começou. Copie o prompt primeiro.";
         copyProofButton.hidden = true;
+        return;
+      }
+      if (videoFinalizationState === "recording" || videoFinalizationState === "hashing") {
+        proofResult.dataset.status = "fail";
+        proofResult.textContent = "O vídeo ainda está gravando ou calculando o SHA-256. Encerre a gravação e espere a confirmação do vínculo antes de emitir o recibo.";
+        copyProofButton.hidden = true;
+        downloadProofButton.hidden = true;
+        lastProofReceipt = null;
+        return;
+      }
+      if (videoFinalizationState === "failed") {
+        proofResult.dataset.status = "fail";
+        proofResult.textContent = "A gravação não produziu um hash verificável. Grave novamente ou recarregue a página para emitir um recibo sem vídeo; o vínculo nunca é presumido.";
+        copyProofButton.hidden = true;
+        downloadProofButton.hidden = true;
+        lastProofReceipt = null;
+        return;
+      }
+      if (lastVideoProof !== null && lastVideoProof.startedAtEpochMs > trialStartedAt) {
+        proofResult.dataset.status = "fail";
+        proofResult.textContent = "O vídeo começou depois do cronômetro e não cobre o ciclo inteiro. Inicie uma nova gravação antes de Começar no Claude.";
+        copyProofButton.hidden = true;
+        downloadProofButton.hidden = true;
+        lastProofReceipt = null;
         return;
       }
 
@@ -532,7 +690,9 @@
         privacy: {
           responseIncluded: false,
           projectIncluded: false,
+          videoIncluded: false,
           responseDigestAlgorithm: "SHA-256",
+          videoDigestAlgorithm: lastVideoProof === null ? null : "SHA-256",
         },
         trial: {
           startedAtEpochMs: trialStartedAt,
@@ -551,6 +711,7 @@
           sha256: responseDigest.hex,
           utf8Bytes: responseDigest.byteLength,
         },
+        video: lastVideoProof ?? { status: "not-recorded" },
         disclaimer: "Este recibo prova somente a checagem estrutural e temporal local; observação humana e qualidade substantiva não foram verificadas.",
       };
       proofResult.dataset.status = passed ? "pass" : "fail";
