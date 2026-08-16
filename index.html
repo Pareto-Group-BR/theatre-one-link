@@ -162,6 +162,7 @@
     .proof-result[data-status="pass"] { border-color: var(--green); color: var(--green); }
     .proof-result[data-status="fail"] { border-color: var(--accent); color: #ffad9b; }
     .privacy-note { color: var(--muted); }
+    .secondary-action { margin-left: .45rem; color: var(--ink); background: #39312b; }
 
     main > section, article {
       padding: 5rem 0;
@@ -292,9 +293,11 @@
               <li>bloco <code>## 🌉 Estado do teatro</code></li>
               <li>conclusão em até 5 minutos</li>
             </ul>
-            <p class="privacy-note">Tudo roda localmente no navegador. A resposta não é enviada nem armazenada fora desta aba.</p>
+            <p class="privacy-note">Tudo roda localmente no navegador. A resposta não é enviada nem armazenada fora desta aba. O recibo JSON inclui somente metadados e o SHA-256 da resposta — nunca o projeto nem o conteúdo colado.</p>
             <div id="proof-result" class="proof-result" role="status" aria-live="polite" data-status="idle">Copie o prompt para iniciar a prova.</div>
             <button id="copy-proof-button" type="button" hidden>Copiar comprovante</button>
+            <button id="download-proof-button" class="secondary-action" type="button" hidden>Baixar recibo JSON</button>
+            <a id="proof-download" hidden download></a>
           </div>
         </div>
       </div>
@@ -425,11 +428,14 @@
     const verifyButton = document.querySelector("#verify-button");
     const proofResult = document.querySelector("#proof-result");
     const copyProofButton = document.querySelector("#copy-proof-button");
+    const downloadProofButton = document.querySelector("#download-proof-button");
+    const proofDownload = document.querySelector("#proof-download");
     const canonicalUrl = "https://pareto-group-br.github.io/theatre-one-link/";
     const proofThresholdMs = Number(proofSection.dataset.proofThresholdMs);
     const storageKey = "theatre-one-link-trial-started-at";
     let trialStartedAt = Number(sessionStorage.getItem(storageKey)) || null;
     let lastProof = "";
+    let lastProofReceipt = null;
 
     const buildPrompt = (projectDescription) => {
       const project = projectDescription.trim() || "[descreva em uma frase o que você quer melhorar]";
@@ -449,6 +455,8 @@
       sessionStorage.setItem(storageKey, String(trialStartedAt));
       cycleOutput.value = "";
       copyProofButton.hidden = true;
+      downloadProofButton.hidden = true;
+      lastProofReceipt = null;
       proofResult.dataset.status = "idle";
       proofResult.textContent = "Cronômetro iniciado. Cole o prompt no Claude e volte com a resposta completa. Copiar de novo reinicia a prova.";
     };
@@ -465,7 +473,16 @@
       }
     });
 
-    const verifyCycle = () => {
+    const sha256Hex = async (value) => {
+      const bytes = new TextEncoder().encode(value);
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      return {
+        hex: Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(""),
+        byteLength: bytes.byteLength,
+      };
+    };
+
+    const verifyCycle = async () => {
       if (trialStartedAt === null) {
         proofResult.dataset.status = "fail";
         proofResult.textContent = "A prova ainda não começou. Copie o prompt primeiro.";
@@ -480,18 +497,52 @@
         position >= 0 && (index === 0 || position > positions[index - 1]));
       const hasEvidence = /evid[êe]ncia/i.test(output);
       const hasMemory = /##\s*🌉\s*Estado do teatro/i.test(output);
-      const elapsedMs = Math.max(0, Date.now() - trialStartedAt);
+      const completedAt = Date.now();
+      const elapsedMs = Math.max(0, completedAt - trialStartedAt);
       const elapsedSeconds = Math.ceil(elapsedMs / 1000);
       const withinFiveMinutes = elapsedMs <= proofThresholdMs;
       const checks = [orderedRoles, hasEvidence, hasMemory, withinFiveMinutes];
       const labels = ["papéis em ordem", "evidência", "memória", "até 5 minutos"];
       const checklist = labels.map((label, index) => `${checks[index] ? "✓" : "✗"} ${label}`).join(" · ");
       const passed = checks.every(Boolean);
+      const responseDigest = await sha256Hex(output);
 
       lastProof = `${passed ? "PASSOU" : "INCOMPLETO"} — prova local Theatre Harness — ${elapsedSeconds}s — ${checklist} — ${canonicalUrl}`;
+      lastProofReceipt = {
+        schema: "theatre-proof/v1",
+        receiptId: `tp-${completedAt}-${responseDigest.hex.slice(0, 12)}`,
+        generatedBy: "Theatre Harness one-link local verifier",
+        verifierUrl: canonicalUrl,
+        proofScope: "structural-and-time-only",
+        humanObservationClaimed: false,
+        privacy: {
+          responseIncluded: false,
+          projectIncluded: false,
+          responseDigestAlgorithm: "SHA-256",
+        },
+        trial: {
+          startedAtEpochMs: trialStartedAt,
+          completedAtEpochMs: completedAt,
+          elapsedMs,
+          thresholdMs: proofThresholdMs,
+        },
+        checks: {
+          orderedRoles,
+          hasEvidence,
+          hasMemory,
+          withinFiveMinutes,
+        },
+        status: passed ? "passed" : "incomplete",
+        response: {
+          sha256: responseDigest.hex,
+          utf8Bytes: responseDigest.byteLength,
+        },
+        disclaimer: "Este recibo prova somente a checagem estrutural e temporal local; observação humana e qualidade substantiva não foram verificadas.",
+      };
       proofResult.dataset.status = passed ? "pass" : "fail";
       proofResult.textContent = lastProof;
       copyProofButton.hidden = false;
+      downloadProofButton.hidden = false;
     };
 
     verifyButton.addEventListener("click", verifyCycle);
@@ -502,6 +553,15 @@
       } catch {
         proofResult.textContent = `${lastProof}\nNão consegui copiar automaticamente; selecione o texto acima.`;
       }
+    });
+    downloadProofButton.addEventListener("click", () => {
+      if (lastProofReceipt === null) return;
+      const receiptJson = `${JSON.stringify(lastProofReceipt, null, 2)}\n`;
+      const blobUrl = URL.createObjectURL(new Blob([receiptJson], { type: "application/json" }));
+      proofDownload.href = blobUrl;
+      proofDownload.download = `${lastProofReceipt.receiptId}.json`;
+      proofDownload.click();
+      URL.revokeObjectURL(blobUrl);
     });
   </script>
 </body>
