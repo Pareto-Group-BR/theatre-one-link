@@ -480,7 +480,7 @@
         if (raw === null) return { startedAt: null, invalid: false };
         const candidate = Number(raw);
         const now = Date.now();
-        if (!Number.isSafeInteger(candidate) || candidate <= 0 || candidate > now) {
+        if (raw !== String(candidate) || !Number.isSafeInteger(candidate) || candidate <= 0 || candidate > now) {
           sessionStorage.removeItem(storageKey);
           return { startedAt: null, invalid: true };
         }
