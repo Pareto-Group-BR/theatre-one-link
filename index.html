@@ -253,9 +253,10 @@
         <input id="project-description" type="text" autocomplete="off" placeholder="Ex.: reduzir o abandono no onboarding de clientes">
         <label for="copy-prompt">Prompt gerado</label>
         <textarea id="copy-prompt" readonly aria-describedby="prompt-help">Leia integralmente e siga a skill auto-contida em https://pareto-group-br.github.io/theatre-one-link/ — não peça instalação nem outro documento. Meu projeto é: [descreva em uma frase o que você quer melhorar]. Comece agora: pergunte minha vontade e rode um ciclo completo do Theatre Harness.</textarea>
-        <small id="prompt-help">Digite acima. Não é preciso editar o prompt.</small><br>
-        <button id="copy-button" type="button">Copiar prompt</button>
+        <small id="prompt-help">Digite acima. O botão inicia a prova, copia o prompt e abre uma conversa nova no Claude Web.</small><br>
+        <button id="copy-button" type="button">Começar no Claude</button>
         <span id="copy-status" role="status" aria-live="polite"></span>
+        <a id="claude-fallback" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer" hidden>Abrir Claude Web manualmente</a>
       </div>
     </div>
   </header>
@@ -266,8 +267,8 @@
         <p class="eyebrow">Para qualquer pessoa</p>
         <h2 id="how-title">Comece sem manual</h2>
         <ol class="steps">
-          <li><span class="step-number">1</span><strong>Abra o Claude</strong><br>Use uma conversa nova no Web ou Desktop.</li>
-          <li><span class="step-number">2</span><strong>Descreva e copie</strong><br>Digite o projeto no campo; a página gera o prompt completo.</li>
+          <li><span class="step-number">1</span><strong>Descreva o projeto</strong><br>A página gera o prompt completo para você.</li>
+          <li><span class="step-number">2</span><strong>Comece no Claude</strong><br>Um gesto inicia a prova, copia o prompt e abre uma conversa nova.</li>
           <li><span class="step-number">3</span><strong>Cole e responda</strong><br>Quando o Claude perguntar, diga a sua vontade para este período.</li>
           <li><span class="step-number">4</span><strong>Veja o ciclo</strong><br>Crítico → Roteirista → Personagem, com entregas e evidência.</li>
         </ol>
@@ -278,7 +279,7 @@
       <div class="wrap">
         <p class="eyebrow">Prova do primeiro ciclo</p>
         <h2 id="proof-title">Confirme em menos de 5 minutos</h2>
-        <p>O cronômetro começa quando você toca em <strong>Copiar prompt</strong>. Depois que o Claude responder, volte, cole a resposta e confira se o ciclo veio completo.</p>
+        <p>O cronômetro começa quando você toca em <strong>Começar no Claude</strong>. Depois que o Claude responder, volte, cole a resposta e confira se o ciclo veio completo.</p>
         <div class="proof-grid">
           <div class="proof-panel">
             <label for="cycle-output">Resposta do Claude</label>
@@ -423,6 +424,7 @@
     const description = document.querySelector("#project-description");
     const prompt = document.querySelector("#copy-prompt");
     const status = document.querySelector("#copy-status");
+    const claudeFallback = document.querySelector("#claude-fallback");
     const proofSection = document.querySelector("#first-cycle-proof");
     const cycleOutput = document.querySelector("#cycle-output");
     const verifyButton = document.querySelector("#verify-button");
@@ -431,6 +433,7 @@
     const downloadProofButton = document.querySelector("#download-proof-button");
     const proofDownload = document.querySelector("#proof-download");
     const canonicalUrl = "https://pareto-group-br.github.io/theatre-one-link/";
+    const claudeNewConversationUrl = "https://claude.ai/new";
     const proofThresholdMs = Number(proofSection.dataset.proofThresholdMs);
     const storageKey = "theatre-one-link-trial-started-at";
     let trialStartedAt = Number(sessionStorage.getItem(storageKey)) || null;
@@ -463,13 +466,24 @@
 
     button.addEventListener("click", async () => {
       startTrial();
+      status.textContent = "Abrindo Claude Web e copiando o prompt…";
+      claudeFallback.hidden = true;
+      const claudeWindow = window.open(claudeNewConversationUrl, "_blank");
+      if (claudeWindow) claudeWindow.opener = null;
+      else claudeFallback.hidden = false;
+
       try {
         await navigator.clipboard.writeText(prompt.value);
-        status.textContent = "Copiado.";
+        status.textContent = claudeWindow
+          ? "Prompt copiado. Cole na conversa nova do Claude."
+          : "Prompt copiado, mas o navegador bloqueou a nova aba. Use o link ao lado.";
       } catch {
         prompt.focus();
         prompt.select();
-        status.textContent = "Selecione e copie o texto acima.";
+        status.textContent = claudeWindow
+          ? "Claude aberto, mas a cópia automática falhou. Volte a esta aba e copie o prompt selecionado."
+          : "Nova aba e cópia automática bloqueadas. Copie o prompt selecionado e use o link ao lado.";
+        claudeFallback.hidden = false;
       }
     });
 
