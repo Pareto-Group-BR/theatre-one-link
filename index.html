@@ -163,6 +163,15 @@
     .proof-result[data-status="fail"] { border-color: var(--accent); color: #ffad9b; }
     .privacy-note { color: var(--muted); }
     .secondary-action { margin-left: .45rem; color: var(--ink); background: #39312b; }
+    .recording-controls {
+      margin: 1rem 0;
+      padding: 1rem;
+      border: 1px dashed #5b5047;
+      border-radius: .75rem;
+      background: #151311;
+    }
+    .recording-controls p { margin: .55rem 0 0; }
+    #recording-status { display: block; margin-top: .65rem; color: var(--green); }
 
     main > section, article {
       padding: 5rem 0;
@@ -280,6 +289,14 @@
         <p class="eyebrow">Prova do primeiro ciclo</p>
         <h2 id="proof-title">Confirme em menos de 5 minutos</h2>
         <p>O cronômetro começa quando você toca em <strong>Começar no Claude</strong>. Depois que o Claude responder, volte, cole a resposta e confira se o ciclo veio completo.</p>
+        <div class="recording-controls" aria-labelledby="recording-title">
+          <strong id="recording-title">Vídeo da prova (opcional)</strong>
+          <p>Antes de começar, grave a tela sem instalar nada. No seletor do navegador, escolha a tela ou janela que mostrará o Claude; capturar só esta aba não registra a conversa.</p>
+          <button id="start-recording-button" class="secondary-action" type="button">Gravar prova em vídeo</button>
+          <button id="stop-recording-button" type="button" hidden>Encerrar e baixar vídeo</button>
+          <span id="recording-status" role="status" aria-live="polite">O vídeo fica somente no navegador e só é baixado no seu dispositivo. Nenhum upload é feito.</span>
+          <a id="recording-download" hidden download></a>
+        </div>
         <div class="proof-grid">
           <div class="proof-panel">
             <label for="cycle-output">Resposta do Claude</label>
@@ -432,6 +449,10 @@
     const copyProofButton = document.querySelector("#copy-proof-button");
     const downloadProofButton = document.querySelector("#download-proof-button");
     const proofDownload = document.querySelector("#proof-download");
+    const startRecordingButton = document.querySelector("#start-recording-button");
+    const stopRecordingButton = document.querySelector("#stop-recording-button");
+    const recordingStatus = document.querySelector("#recording-status");
+    const recordingDownload = document.querySelector("#recording-download");
     const canonicalUrl = "https://pareto-group-br.github.io/theatre-one-link/";
     const claudeNewConversationUrl = "https://claude.ai/new";
     const proofThresholdMs = Number(proofSection.dataset.proofThresholdMs);
@@ -439,6 +460,9 @@
     let trialStartedAt = Number(sessionStorage.getItem(storageKey)) || null;
     let lastProof = "";
     let lastProofReceipt = null;
+    let screenStream = null;
+    let screenRecorder = null;
+    let recordedChunks = [];
 
     const buildPrompt = (projectDescription) => {
       const project = projectDescription.trim() || "[descreva em uma frase o que você quer melhorar]";
@@ -486,6 +510,58 @@
         claudeFallback.hidden = false;
       }
     });
+
+    const finishRecording = () => {
+      if (screenRecorder?.state === "recording") screenRecorder.stop();
+      for (const track of screenStream?.getTracks?.() || []) track.stop();
+    };
+
+    startRecordingButton.addEventListener("click", async () => {
+      if (!navigator.mediaDevices?.getDisplayMedia || typeof MediaRecorder === "undefined") {
+        recordingStatus.textContent = "Este navegador não oferece gravação de tela. Use a captura nativa do sistema e preserve o vídeo junto do recibo.";
+        return;
+      }
+
+      recordedChunks = [];
+      try {
+        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        const preferredMimeType = MediaRecorder.isTypeSupported?.("video/webm;codecs=vp9")
+          ? "video/webm;codecs=vp9"
+          : "video/webm";
+        screenRecorder = new MediaRecorder(screenStream, { mimeType: preferredMimeType });
+        screenRecorder.addEventListener("dataavailable", (event) => {
+          if (event.data?.size > 0) recordedChunks.push(event.data);
+        });
+        screenRecorder.addEventListener("stop", () => {
+          startRecordingButton.hidden = false;
+          stopRecordingButton.hidden = true;
+          if (recordedChunks.length === 0) {
+            recordingStatus.textContent = "A gravação terminou sem dados. Use a captura nativa do sistema; nenhuma prova em vídeo foi gerada.";
+            return;
+          }
+          const video = new Blob(recordedChunks, { type: screenRecorder.mimeType || "video/webm" });
+          const videoUrl = URL.createObjectURL(video);
+          recordingDownload.href = videoUrl;
+          recordingDownload.download = `theatre-proof-${Date.now()}.webm`;
+          recordingDownload.click();
+          URL.revokeObjectURL(videoUrl);
+          recordingStatus.textContent = "Vídeo baixado. Guarde-o com o recibo JSON; a observação humana ainda precisa julgar a qualidade do ciclo.";
+        });
+        for (const track of screenStream.getTracks()) {
+          track.addEventListener?.("ended", finishRecording, { once: true });
+        }
+        screenRecorder.start(1000);
+        startRecordingButton.hidden = true;
+        stopRecordingButton.hidden = false;
+        recordingStatus.textContent = "Gravação ativa. Agora use Começar no Claude; ao voltar, encerre e baixe o vídeo.";
+      } catch {
+        screenStream = null;
+        screenRecorder = null;
+        recordingStatus.textContent = "A gravação não começou: permissão negada ou captura indisponível. Nada foi gravado nem enviado; use a captura nativa do sistema.";
+      }
+    });
+
+    stopRecordingButton.addEventListener("click", finishRecording);
 
     const sha256Hex = async (value) => {
       const bytes = new TextEncoder().encode(value);
