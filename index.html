@@ -312,7 +312,7 @@
               <li>conclusão em até 5 minutos</li>
             </ul>
             <p class="privacy-note">Tudo roda localmente no navegador. A resposta e o vídeo não são enviados nem armazenados fora desta aba. O recibo JSON inclui somente metadados e os hashes SHA-256 da resposta e, quando gravado, do WebM — nunca o projeto, a resposta ou os bytes do vídeo.</p>
-            <div id="proof-result" class="proof-result" role="status" aria-live="polite" data-status="idle">Copie o prompt para iniciar a prova.</div>
+            <div id="proof-result" class="proof-result" role="status" aria-live="polite" data-status="idle">Copie o prompt para iniciar a prova. Se esta aba recarregar, somente o horário válido do cronômetro será retomado; projeto e resposta nunca são persistidos.</div>
             <button id="copy-proof-button" type="button" hidden>Copiar comprovante</button>
             <button id="download-proof-button" class="secondary-action" type="button" hidden>Baixar recibo JSON</button>
             <a id="proof-download" hidden download></a>
@@ -474,7 +474,23 @@
     const proofThresholdMs = Number(proofSection.dataset.proofThresholdMs);
     const proofDisclaimer = "Este recibo prova somente a checagem estrutural e temporal local; observação humana e qualidade substantiva não foram verificadas.";
     const storageKey = "theatre-one-link-trial-started-at";
-    let trialStartedAt = Number(sessionStorage.getItem(storageKey)) || null;
+    const readStoredTrial = () => {
+      try {
+        const raw = sessionStorage.getItem(storageKey);
+        if (raw === null) return { startedAt: null, invalid: false };
+        const candidate = Number(raw);
+        const now = Date.now();
+        if (!Number.isSafeInteger(candidate) || candidate <= 0 || candidate > now) {
+          sessionStorage.removeItem(storageKey);
+          return { startedAt: null, invalid: true };
+        }
+        return { startedAt: candidate, invalid: false };
+      } catch {
+        return { startedAt: null, invalid: false };
+      }
+    };
+    const storedTrial = readStoredTrial();
+    let trialStartedAt = storedTrial.startedAt;
     let lastProof = "";
     let lastProofReceipt = null;
     let screenStream = null;
@@ -510,6 +526,35 @@
     description.addEventListener("input", updatePrompt);
     updatePrompt();
 
+    const restoreTrialState = () => {
+      if (storedTrial.invalid) {
+        proofResult.dataset.status = "fail";
+        proofResult.textContent = "O cronômetro salvo era inválido ou estava no futuro e foi descartado. Use Começar no Claude para iniciar uma prova íntegra.";
+        return;
+      }
+      if (trialStartedAt === null) return;
+      const elapsedMs = Date.now() - trialStartedAt;
+      const remainingMs = proofThresholdMs - elapsedMs;
+      if (remainingMs >= 0) {
+        proofResult.dataset.status = "idle";
+        proofResult.textContent = `Prova retomada após recarregar. Restam ${Math.ceil(remainingMs / 1000)}s; volte do Claude e cole a resposta completa.`;
+      } else {
+        proofResult.dataset.status = "fail";
+        proofResult.textContent = `Prova retomada, mas o limite expirou há ${Math.ceil(Math.abs(remainingMs) / 1000)}s. A resposta será registrada como incompleta; Começar no Claude reinicia o cronômetro.`;
+      }
+    };
+
+    restoreTrialState();
+
+    const persistTrialStart = () => {
+      try {
+        sessionStorage.setItem(storageKey, String(trialStartedAt));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
     const startTrial = () => {
       trialStartedAt = Date.now();
       if (lastVideoProof?.completedAtEpochMs <= trialStartedAt) {
@@ -517,13 +562,15 @@
         videoFinalizationState = "none";
         recordingStatus.textContent = "Novo ciclo iniciado: qualquer vídeo anterior foi desvinculado. Para vincular um vídeo, comece a gravação antes deste botão.";
       }
-      sessionStorage.setItem(storageKey, String(trialStartedAt));
+      const persisted = persistTrialStart();
       cycleOutput.value = "";
       copyProofButton.hidden = true;
       downloadProofButton.hidden = true;
       lastProofReceipt = null;
       proofResult.dataset.status = "idle";
-      proofResult.textContent = "Cronômetro iniciado. Cole o prompt no Claude e volte com a resposta completa. Copiar de novo reinicia a prova.";
+      proofResult.textContent = persisted
+        ? "Cronômetro iniciado. Cole o prompt no Claude e volte com a resposta completa. Copiar de novo reinicia a prova; recarregar esta aba retoma o horário."
+        : "Cronômetro iniciado. Cole o prompt no Claude e volte com a resposta completa. Este navegador bloqueou o storage: a prova funciona agora, mas recarregar esta aba não retomará o horário.";
     };
 
     button.addEventListener("click", async () => {
@@ -668,6 +715,15 @@
         copyProofButton.hidden = true;
         return;
       }
+      const completedAt = Date.now();
+      if (!Number.isSafeInteger(trialStartedAt) || trialStartedAt <= 0 || trialStartedAt > completedAt) {
+        proofResult.dataset.status = "fail";
+        proofResult.textContent = "O cronômetro da prova é inválido ou está no futuro. Nenhum recibo foi emitido; use Começar no Claude para reiniciar.";
+        copyProofButton.hidden = true;
+        downloadProofButton.hidden = true;
+        lastProofReceipt = null;
+        return;
+      }
       if (videoFinalizationState === "recording" || videoFinalizationState === "hashing") {
         proofResult.dataset.status = "fail";
         proofResult.textContent = "O vídeo ainda está gravando ou calculando o SHA-256. Encerre a gravação e espere a confirmação do vínculo antes de emitir o recibo.";
@@ -700,7 +756,6 @@
         position >= 0 && (index === 0 || position > positions[index - 1]));
       const hasEvidence = /evid[êe]ncia/i.test(output);
       const hasMemory = /##\s*🌉\s*Estado do teatro/i.test(output);
-      const completedAt = Date.now();
       const elapsedMs = Math.max(0, completedAt - trialStartedAt);
       const elapsedSeconds = Math.ceil(elapsedMs / 1000);
       const withinFiveMinutes = elapsedMs <= proofThresholdMs;
