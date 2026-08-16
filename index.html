@@ -318,6 +318,17 @@
             <a id="proof-download" hidden download></a>
           </div>
         </div>
+        <div class="recording-controls" aria-labelledby="proof-files-title">
+          <strong id="proof-files-title">Conferir uma prova salva, sem terminal</strong>
+          <p>Cole acima a resposta exata do Claude, selecione o recibo JSON e, se ele declarar vídeo, selecione também o WebM. A página recalcula os hashes e confere o contrato inteiro localmente.</p>
+          <label for="proof-receipt-file">Recibo JSON</label>
+          <input id="proof-receipt-file" type="file" accept="application/json,.json">
+          <label for="proof-video-file">Vídeo WebM (somente quando vinculado ao recibo)</label>
+          <input id="proof-video-file" type="file" accept="video/webm,.webm">
+          <button id="verify-proof-files-button" class="secondary-action" type="button">Conferir arquivos</button>
+          <div id="proof-files-result" class="proof-result" role="status" aria-live="polite" data-status="idle">Nenhum arquivo é enviado. A conferência acontece somente nesta aba.</div>
+          <p class="privacy-note">Um resultado íntegro prova que os arquivos não mudaram e que o recibo respeita o contrato <code>theatre-proof/v1</code>. Não prova que a pessoa era não-técnica nem substitui o julgamento humano da qualidade.</p>
+        </div>
       </div>
     </section>
 
@@ -453,9 +464,14 @@
     const stopRecordingButton = document.querySelector("#stop-recording-button");
     const recordingStatus = document.querySelector("#recording-status");
     const recordingDownload = document.querySelector("#recording-download");
+    const proofReceiptFile = document.querySelector("#proof-receipt-file");
+    const proofVideoFile = document.querySelector("#proof-video-file");
+    const verifyProofFilesButton = document.querySelector("#verify-proof-files-button");
+    const proofFilesResult = document.querySelector("#proof-files-result");
     const canonicalUrl = "https://pareto-group-br.github.io/theatre-one-link/";
     const claudeNewConversationUrl = "https://claude.ai/new";
     const proofThresholdMs = Number(proofSection.dataset.proofThresholdMs);
+    const proofDisclaimer = "Este recibo prova somente a checagem estrutural e temporal local; observação humana e qualidade substantiva não foram verificadas.";
     const storageKey = "theatre-one-link-trial-started-at";
     let trialStartedAt = Number(sessionStorage.getItem(storageKey)) || null;
     let lastProof = "";
@@ -712,7 +728,7 @@
           utf8Bytes: responseDigest.byteLength,
         },
         video: lastVideoProof ?? { status: "not-recorded" },
-        disclaimer: "Este recibo prova somente a checagem estrutural e temporal local; observação humana e qualidade substantiva não foram verificadas.",
+        disclaimer: proofDisclaimer,
       };
       proofResult.dataset.status = passed ? "pass" : "fail";
       proofResult.textContent = lastProof;
@@ -738,6 +754,92 @@
       proofDownload.click();
       URL.revokeObjectURL(blobUrl);
     });
+
+    const failProofFiles = (message) => {
+      proofFilesResult.dataset.status = "fail";
+      proofFilesResult.textContent = `NÃO CONFERE — ${message}`;
+    };
+
+    const hasPrivateContentKey = (value) => {
+      if (value === null || typeof value !== "object") return false;
+      if (Array.isArray(value)) return value.some(hasPrivateContentKey);
+      const forbidden = new Set(["project", "projectDescription", "content", "output", "rawResponse"]);
+      return Object.entries(value).some(([key, child]) => forbidden.has(key) || hasPrivateContentKey(child));
+    };
+
+    const verifyProofFiles = async () => {
+      proofFilesResult.dataset.status = "idle";
+      proofFilesResult.textContent = "Conferindo recibo e hashes localmente…";
+      const receiptFile = proofReceiptFile.files?.[0];
+      const videoFile = proofVideoFile.files?.[0] ?? null;
+      if (!receiptFile) {
+        failProofFiles("selecione o recibo JSON.");
+        return;
+      }
+
+      try {
+        const receipt = JSON.parse(await receiptFile.text());
+        if (receipt === null || Array.isArray(receipt) || typeof receipt !== "object") throw new Error("o recibo não é um objeto JSON");
+        if (receipt.schema !== "theatre-proof/v1") throw new Error("schema ausente ou diferente de theatre-proof/v1");
+        if (receipt.generatedBy !== "Theatre Harness one-link local verifier" || receipt.verifierUrl !== canonicalUrl) throw new Error("origem canônica do recibo não confere");
+        if (receipt.proofScope !== "structural-and-time-only" || receipt.humanObservationClaimed !== false) throw new Error("o escopo ou a alegação de observação humana foi alterado");
+        if (receipt.disclaimer !== proofDisclaimer) throw new Error("o aviso de limite da prova foi alterado");
+        if (hasPrivateContentKey(receipt)) throw new Error("o recibo contém campo de conteúdo privado proibido");
+
+        const privacy = receipt.privacy;
+        if (!privacy || privacy.responseIncluded !== false || privacy.projectIncluded !== false || privacy.videoIncluded !== false || privacy.responseDigestAlgorithm !== "SHA-256") throw new Error("as garantias de privacidade não conferem");
+
+        const trial = receipt.trial;
+        const timestampsAreSafe = trial
+          && [trial.startedAtEpochMs, trial.completedAtEpochMs, trial.elapsedMs, trial.thresholdMs]
+            .every((value) => Number.isSafeInteger(value) && value >= 0);
+        if (!timestampsAreSafe || trial.completedAtEpochMs < trial.startedAtEpochMs || trial.elapsedMs !== trial.completedAtEpochMs - trial.startedAtEpochMs || trial.thresholdMs !== proofThresholdMs) throw new Error("timestamps, duração ou limite de cinco minutos não conferem");
+
+        const checks = receipt.checks;
+        const checkValues = checks && [checks.orderedRoles, checks.hasEvidence, checks.hasMemory, checks.withinFiveMinutes];
+        if (!checkValues || checkValues.some((value) => typeof value !== "boolean")) throw new Error("checks estruturais inválidos");
+        if (checks.withinFiveMinutes !== (trial.elapsedMs <= trial.thresholdMs)) throw new Error("o check de tempo contradiz a duração");
+        const savedResponse = cycleOutput.value;
+        const savedRoleLabels = ["⚖️ Crítico", "🧭 Roteirista", "🎬 Personagem", "🌉 Registro"];
+        const savedRolePositions = savedRoleLabels.map((label) => savedResponse.indexOf(label));
+        const expectedReceiptChecks = {
+          orderedRoles: savedRolePositions.every((position, index) => position >= 0 && (index === 0 || position > savedRolePositions[index - 1])),
+          hasEvidence: /evid[êe]ncia/i.test(savedResponse),
+          hasMemory: /##\s*🌉\s*Estado do teatro/i.test(savedResponse),
+          withinFiveMinutes: trial.elapsedMs <= trial.thresholdMs,
+        };
+        if (Object.entries(expectedReceiptChecks).some(([key, value]) => checks[key] !== value)) throw new Error("os checks não correspondem à resposta e à duração");
+        const expectedStatus = checkValues.every(Boolean) ? "passed" : "incomplete";
+        if (receipt.status !== expectedStatus) throw new Error("o status contradiz os checks");
+
+        const responseDigest = await sha256Hex(savedResponse);
+        if (!receipt.response || receipt.response.sha256 !== responseDigest.hex || receipt.response.utf8Bytes !== responseDigest.byteLength) throw new Error("a resposta colada não corresponde ao hash/tamanho do recibo");
+        if (receipt.receiptId !== `tp-${trial.completedAtEpochMs}-${responseDigest.hex.slice(0, 12)}`) throw new Error("o identificador do recibo não corresponde à resposta e ao timestamp");
+
+        const video = receipt.video;
+        if (video?.status === "not-recorded") {
+          if (privacy.videoDigestAlgorithm !== null) throw new Error("recibo sem vídeo declara algoritmo de vídeo");
+          if (videoFile !== null) throw new Error("o recibo declara que não houve vídeo; remova o WebM selecionado");
+        } else if (video?.status === "linked") {
+          if (!videoFile) throw new Error("o recibo declara vídeo vinculado; selecione o WebM correspondente");
+          if (privacy.videoDigestAlgorithm !== "SHA-256" || video.digestAlgorithm !== "SHA-256") throw new Error("algoritmo do vídeo não confere");
+          const selectedVideoBytes = new Uint8Array(await videoFile.arrayBuffer());
+          const videoHash = await sha256BytesHex(selectedVideoBytes);
+          if (video.sha256 !== videoHash || video.byteLength !== videoFile.size || video.fileName !== videoFile.name) throw new Error("o vídeo selecionado não corresponde ao hash, tamanho ou nome do recibo");
+          if (video.mimeType && videoFile.type && video.mimeType !== videoFile.type) throw new Error("o tipo do vídeo não corresponde ao recibo");
+          if (![video.startedAtEpochMs, video.completedAtEpochMs].every((value) => Number.isSafeInteger(value) && value >= 0) || video.completedAtEpochMs < video.startedAtEpochMs || video.startedAtEpochMs > trial.startedAtEpochMs || video.completedAtEpochMs > trial.completedAtEpochMs) throw new Error("os timestamps do vídeo não cobrem validamente a prova");
+        } else {
+          throw new Error("estado do vídeo inválido");
+        }
+
+        proofFilesResult.dataset.status = "pass";
+        proofFilesResult.textContent = `ÍNTEGRO (${receipt.status === "passed" ? "ciclo passou" : "ciclo incompleto"}) — recibo, resposta${videoFile ? " e vídeo" : ""} correspondem por SHA-256. Isso não substitui o julgamento humano da qualidade.`;
+      } catch (error) {
+        failProofFiles(error instanceof Error ? error.message : "falha inesperada ao ler os arquivos");
+      }
+    };
+
+    verifyProofFilesButton.addEventListener("click", verifyProofFiles);
   </script>
 </body>
 </html>
