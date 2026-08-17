@@ -261,8 +261,8 @@
         <label for="project-description">O que você quer melhorar?</label>
         <input id="project-description" type="text" autocomplete="off" placeholder="Ex.: reduzir o abandono no onboarding de clientes">
         <label for="copy-prompt">Prompt gerado</label>
-        <textarea id="copy-prompt" readonly aria-describedby="prompt-help">Leia integralmente e siga a skill auto-contida em https://pareto-group-br.github.io/theatre-one-link/ — não peça instalação nem outro documento. Meu projeto é: [descreva em uma frase o que você quer melhorar]. Comece agora: pergunte minha vontade e rode um ciclo completo do Theatre Harness.</textarea>
-        <small id="prompt-help">Digite acima. O botão inicia a prova, copia o prompt e abre uma conversa nova no Claude Web.</small><br>
+        <textarea id="copy-prompt" readonly aria-describedby="prompt-help">Preparando o prompt auto-contido com a Skill integral desta página…</textarea>
+        <small id="prompt-help">Digite acima. O botão incorpora a Skill integral no prompt, inicia a prova, copia tudo e abre uma conversa nova no Claude Web — sem depender de o Claude buscar esta URL.</small><br>
         <button id="copy-button" type="button">Começar no Claude</button>
         <span id="copy-status" role="status" aria-live="polite"></span>
         <a id="claude-fallback" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer" hidden>Abrir Claude Web manualmente</a>
@@ -277,7 +277,7 @@
         <h2 id="how-title">Comece sem manual</h2>
         <ol class="steps">
           <li><span class="step-number">1</span><strong>Descreva o projeto</strong><br>A página gera o prompt completo para você.</li>
-          <li><span class="step-number">2</span><strong>Comece no Claude</strong><br>Um gesto inicia a prova, copia o prompt e abre uma conversa nova.</li>
+          <li><span class="step-number">2</span><strong>Comece no Claude</strong><br>Um gesto incorpora a Skill inteira, inicia a prova, copia o prompt e abre uma conversa nova — sem depender de leitura de URL.</li>
           <li><span class="step-number">3</span><strong>Cole e responda</strong><br>Quando o Claude perguntar, diga a sua vontade para este período.</li>
           <li><span class="step-number">4</span><strong>Veja o ciclo</strong><br>Crítico → Roteirista → Personagem, com entregas e evidência.</li>
         </ol>
@@ -453,6 +453,7 @@
     const prompt = document.querySelector("#copy-prompt");
     const status = document.querySelector("#copy-status");
     const claudeFallback = document.querySelector("#claude-fallback");
+    const skillInstructions = document.querySelector("#theatre-skill");
     const proofSection = document.querySelector("#first-cycle-proof");
     const cycleOutput = document.querySelector("#cycle-output");
     const verifyButton = document.querySelector("#verify-button");
@@ -483,14 +484,27 @@
     let videoFinalizationState = "none";
     let lastVideoProof = null;
 
+    const embeddedSkillText = () => skillInstructions?.textContent?.trim() ?? "";
+
     const buildPrompt = (projectDescription) => {
+      const instructions = embeddedSkillText();
+      if (instructions.length === 0) return null;
       const project = projectDescription.trim() || "[descreva em uma frase o que você quer melhorar]";
-      return `Leia integralmente e siga a skill auto-contida em ${canonicalUrl} — não peça instalação nem outro documento. Meu projeto é: ${project}. Comece agora: pergunte minha vontade e rode um ciclo completo do Theatre Harness.`;
+      return `Você recebeu abaixo a Skill integral do Theatre Harness. Use o texto incorporado: não tente buscar outro documento nem peça instalação.\nFonte canônica: ${canonicalUrl}\nMeu projeto é: ${project}.\nComece agora: pergunte minha vontade e rode um ciclo completo do Theatre Harness.\n\n--- INÍCIO DA SKILL AUTO-CONTIDA ---\n${instructions}\n--- FIM DA SKILL AUTO-CONTIDA ---`;
     };
 
     const updatePrompt = () => {
-      prompt.value = buildPrompt(description.value);
+      const generatedPrompt = buildPrompt(description.value);
+      if (generatedPrompt === null) {
+        prompt.value = "ERRO: as instruções integrais da Skill não estão disponíveis nesta página.";
+        status.textContent = "Não foi possível preparar a Skill. A prova não começou e o Claude não será aberto.";
+        button.disabled = true;
+        return false;
+      }
+      prompt.value = generatedPrompt;
       status.textContent = "";
+      button.disabled = false;
+      return true;
     };
 
     description.addEventListener("input", updatePrompt);
@@ -513,8 +527,9 @@
     };
 
     button.addEventListener("click", async () => {
+      if (!updatePrompt()) return;
       startTrial();
-      status.textContent = "Abrindo Claude Web e copiando o prompt…";
+      status.textContent = "Abrindo Claude Web e copiando a Skill integral…";
       claudeFallback.hidden = true;
       const claudeWindow = window.open(claudeNewConversationUrl, "_blank");
       if (claudeWindow) claudeWindow.opener = null;
@@ -523,8 +538,8 @@
       try {
         await navigator.clipboard.writeText(prompt.value);
         status.textContent = claudeWindow
-          ? "Prompt copiado. Cole na conversa nova do Claude."
-          : "Prompt copiado, mas o navegador bloqueou a nova aba. Use o link ao lado.";
+          ? "Skill integral copiada. Cole na conversa nova do Claude; nenhuma leitura de URL é necessária."
+          : "Skill integral copiada, mas o navegador bloqueou a nova aba. Use o link ao lado.";
       } catch {
         prompt.focus();
         prompt.select();
