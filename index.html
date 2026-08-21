@@ -289,7 +289,7 @@
       <div class="wrap">
         <p class="eyebrow">Prova do primeiro ciclo</p>
         <h2 id="proof-title">Confirme em menos de 5 minutos</h2>
-        <p>O cronômetro começa quando você toca em <strong>Começar no Claude</strong>. Depois que o Claude responder, volte e cole a resposta: quando o navegador expõe os bytes da colagem, a conferência começa automaticamente. O botão <strong>Verificar ciclo</strong> continua disponível como fallback.</p>
+        <p>O cronômetro começa quando você toca em <strong>Começar no Claude</strong>. Depois que o Claude responder, volte: com a prova ativa, o campo já fica pronto para você colar. Quando o navegador expõe os bytes da colagem, a conferência começa automaticamente. O botão <strong>Verificar ciclo</strong> continua disponível como fallback.</p>
         <div class="recording-controls" aria-labelledby="recording-title">
           <strong id="recording-title">Vídeo da prova (opcional)</strong>
           <p>Antes de começar, grave a tela sem instalar nada. No seletor do navegador, escolha a tela ou janela que mostrará o Claude; capturar só esta aba não registra a conversa.</p>
@@ -304,7 +304,7 @@
             <textarea id="cycle-output" placeholder="Cole aqui a resposta completa do Claude"></textarea>
             <button id="paste-verify-button" class="secondary-action" type="button">Colar e verificar resposta</button>
             <button id="verify-button" type="button">Verificar ciclo</button>
-            <p class="privacy-note">Uma colagem manual após o início verifica automaticamente quando o navegador expõe os bytes do evento. Colar e verificar lê a área de transferência somente depois que a prova começou. Se já houver resposta neste campo, apague-a antes de importar outra.</p>
+            <p class="privacy-note">Ao voltar do Claude com uma prova ativa e este campo vazio, a landing deixa o campo pronto para colar — sem ler a área de transferência. Uma colagem manual após o início verifica automaticamente quando o navegador expõe os bytes do evento. Colar e verificar lê a área de transferência somente depois que a prova começou. Se já houver resposta neste campo, apague-a antes de importar outra.</p>
           </div>
           <div>
             <strong>O verificador procura:</strong>
@@ -998,6 +998,22 @@
     };
 
     cycleOutput.addEventListener("paste", verifyManualPaste);
+
+    const prepareReturnToPaste = () => {
+      if (document.visibilityState !== "visible") return;
+      if (trialStartedAt === null) return;
+      const now = Date.now();
+      if (now < trialStartedAt || now - trialStartedAt > proofThresholdMs) return;
+      if (lastProofReceipt !== null) return;
+      if (cycleOutput.value.length > 0) return;
+      if (document.activeElement === cycleOutput) return;
+      cycleOutput.focus();
+      proofResult.dataset.status = "idle";
+      proofResult.textContent = "Você voltou do Claude. Campo pronto: cole a resposta completa; quando o navegador expuser os bytes, a verificação começa automaticamente.";
+    };
+
+    document.addEventListener?.("visibilitychange", prepareReturnToPaste);
+    window.addEventListener?.("pageshow", prepareReturnToPaste);
     verifyButton.addEventListener("click", verifyCycle);
     copyProofButton.addEventListener("click", async () => {
       try {
