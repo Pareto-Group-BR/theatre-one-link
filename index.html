@@ -302,7 +302,9 @@
           <div class="proof-panel">
             <label for="cycle-output">Resposta do Claude</label>
             <textarea id="cycle-output" placeholder="Cole aqui a resposta completa do Claude"></textarea>
+            <button id="paste-verify-button" class="secondary-action" type="button">Colar e verificar resposta</button>
             <button id="verify-button" type="button">Verificar ciclo</button>
+            <p class="privacy-note">Colar e verificar lê a área de transferência somente depois que a prova começou. Se já houver resposta neste campo, apague-a antes de importar outra.</p>
           </div>
           <div>
             <strong>O verificador procura:</strong>
@@ -462,6 +464,7 @@
     const skillInstructions = document.querySelector("#theatre-skill");
     const proofSection = document.querySelector("#first-cycle-proof");
     const cycleOutput = document.querySelector("#cycle-output");
+    const pasteVerifyButton = document.querySelector("#paste-verify-button");
     const verifyButton = document.querySelector("#verify-button");
     const proofResult = document.querySelector("#proof-result");
     const copyProofButton = document.querySelector("#copy-proof-button");
@@ -647,6 +650,7 @@
       }
       const persisted = persistTrialStart();
       cycleOutput.value = "";
+      cycleOutput.removeAttribute("aria-invalid");
       copyProofButton.hidden = true;
       downloadProofButton.hidden = true;
       lastProofReceipt = null;
@@ -903,6 +907,54 @@
       }
     };
 
+    const failClipboardImport = (message) => {
+      proofResult.dataset.status = "fail";
+      proofResult.textContent = message;
+      cycleOutput.setAttribute("aria-invalid", "true");
+      cycleOutput.focus();
+    };
+
+    const pasteAndVerify = async () => {
+      if (trialStartedAt === null) {
+        failClipboardImport("A prova ainda não começou. Use Começar no Claude antes de autorizar a leitura da área de transferência; nenhuma resposta foi alterada.");
+        return;
+      }
+      if (cycleOutput.value.length > 0) {
+        failClipboardImport("A resposta atual foi preservada. Apague o campo explicitamente antes de colar e verificar outra resposta.");
+        return;
+      }
+      if (typeof navigator.clipboard?.readText !== "function") {
+        failClipboardImport("Este navegador não oferece leitura da área de transferência. Cole a resposta manualmente no campo e use Verificar ciclo.");
+        return;
+      }
+
+      const importTrialStartedAt = trialStartedAt;
+      let clipboardText;
+      try {
+        clipboardText = await navigator.clipboard.readText();
+      } catch {
+        failClipboardImport("A leitura da área de transferência foi negada ou falhou. Cole a resposta manualmente no campo e use Verificar ciclo.");
+        return;
+      }
+      if (trialStartedAt !== importTrialStartedAt) {
+        failClipboardImport("Uma nova prova começou enquanto o navegador lia a área de transferência. Nada foi importado; copie a resposta do ciclo atual e tente de novo.");
+        return;
+      }
+      if (clipboardText.length === 0) {
+        failClipboardImport("A área de transferência está vazia. Copie a resposta do Claude ou cole-a manualmente neste campo.");
+        return;
+      }
+      if (cycleOutput.value.length > 0) {
+        failClipboardImport("A resposta mudou enquanto o navegador lia a área de transferência e foi preservada. Apague o campo explicitamente antes de tentar de novo.");
+        return;
+      }
+
+      cycleOutput.value = clipboardText;
+      cycleOutput.removeAttribute("aria-invalid");
+      await verifyCycle();
+    };
+
+    pasteVerifyButton.addEventListener("click", pasteAndVerify);
     verifyButton.addEventListener("click", verifyCycle);
     copyProofButton.addEventListener("click", async () => {
       try {
@@ -932,6 +984,7 @@
     });
 
     cycleOutput.addEventListener("input", () => {
+      cycleOutput.removeAttribute("aria-invalid");
       copyProofButton.hidden = true;
       downloadProofButton.hidden = true;
       lastProofReceipt = null;
