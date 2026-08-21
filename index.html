@@ -289,7 +289,7 @@
       <div class="wrap">
         <p class="eyebrow">Prova do primeiro ciclo</p>
         <h2 id="proof-title">Confirme em menos de 5 minutos</h2>
-        <p>O cronômetro começa quando você toca em <strong>Começar no Claude</strong>. Depois que o Claude responder, volte, cole a resposta e confira se o ciclo veio completo.</p>
+        <p>O cronômetro começa quando você toca em <strong>Começar no Claude</strong>. Depois que o Claude responder, volte e cole a resposta: quando o navegador expõe os bytes da colagem, a conferência começa automaticamente. O botão <strong>Verificar ciclo</strong> continua disponível como fallback.</p>
         <div class="recording-controls" aria-labelledby="recording-title">
           <strong id="recording-title">Vídeo da prova (opcional)</strong>
           <p>Antes de começar, grave a tela sem instalar nada. No seletor do navegador, escolha a tela ou janela que mostrará o Claude; capturar só esta aba não registra a conversa.</p>
@@ -304,7 +304,7 @@
             <textarea id="cycle-output" placeholder="Cole aqui a resposta completa do Claude"></textarea>
             <button id="paste-verify-button" class="secondary-action" type="button">Colar e verificar resposta</button>
             <button id="verify-button" type="button">Verificar ciclo</button>
-            <p class="privacy-note">Colar e verificar lê a área de transferência somente depois que a prova começou. Se já houver resposta neste campo, apague-a antes de importar outra.</p>
+            <p class="privacy-note">Uma colagem manual após o início verifica automaticamente quando o navegador expõe os bytes do evento. Colar e verificar lê a área de transferência somente depois que a prova começou. Se já houver resposta neste campo, apague-a antes de importar outra.</p>
           </div>
           <div>
             <strong>O verificador procura:</strong>
@@ -955,6 +955,49 @@
     };
 
     pasteVerifyButton.addEventListener("click", pasteAndVerify);
+
+    const preserveNativePasteFallback = (message) => {
+      proofResult.dataset.status = "idle";
+      proofResult.textContent = `${message} A colagem nativa foi preservada; depois use Verificar ciclo.`;
+      cycleOutput.removeAttribute("aria-invalid");
+    };
+
+    const verifyManualPaste = async (event) => {
+      if (typeof event.clipboardData?.getData !== "function") {
+        preserveNativePasteFallback("Este navegador não expôs os bytes da colagem para autoverificação.");
+        return;
+      }
+      if (trialStartedAt === null) {
+        event.preventDefault();
+        failClipboardImport("A prova ainda não começou. Use Começar no Claude antes de colar uma resposta; a colagem foi recusada e o campo não mudou.");
+        return;
+      }
+      if (cycleOutput.value.length > 0) {
+        event.preventDefault();
+        failClipboardImport("A resposta atual foi preservada. Apague o campo explicitamente antes de colar outra resposta.");
+        return;
+      }
+
+      let pastedText;
+      try {
+        pastedText = event.clipboardData.getData("text/plain");
+      } catch {
+        preserveNativePasteFallback("O navegador não permitiu ler os bytes do evento para autoverificação.");
+        return;
+      }
+      if (pastedText.length === 0) {
+        event.preventDefault();
+        failClipboardImport("A colagem não contém texto. Copie a resposta completa do Claude antes de tentar novamente.");
+        return;
+      }
+
+      event.preventDefault();
+      cycleOutput.value = pastedText;
+      cycleOutput.removeAttribute("aria-invalid");
+      await verifyCycle();
+    };
+
+    cycleOutput.addEventListener("paste", verifyManualPaste);
     verifyButton.addEventListener("click", verifyCycle);
     copyProofButton.addEventListener("click", async () => {
       try {
