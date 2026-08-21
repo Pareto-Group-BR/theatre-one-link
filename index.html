@@ -257,12 +257,13 @@
       </ul>
 
       <div class="prompt-card" aria-labelledby="prompt-title">
-        <strong id="prompt-title">Descreva o projeto; o prompt fica pronto sozinho:</strong>
-        <label for="project-description">O que você quer melhorar?</label>
-        <input id="project-description" type="text" autocomplete="off" placeholder="Ex.: reduzir o abandono no onboarding de clientes">
+        <strong id="prompt-title">Uma frase define o projeto e a vontade inicial:</strong>
+        <label for="project-description">O que você quer melhorar agora?</label>
+        <input id="project-description" type="text" autocomplete="off" required aria-describedby="project-help" placeholder="Ex.: reduzir o abandono no onboarding de clientes">
+        <small id="project-help">Essa frase vira a descrição do projeto e a vontade humana já confirmada para o primeiro ciclo. O Claude começa sem perguntar de novo.</small>
         <label for="copy-prompt">Prompt gerado</label>
         <textarea id="copy-prompt" readonly aria-describedby="prompt-help">Preparando o prompt auto-contido com a Skill integral desta página…</textarea>
-        <small id="prompt-help">Digite acima. O botão incorpora a Skill integral no prompt, inicia a prova, copia tudo e abre uma conversa nova no Claude Web — sem depender de o Claude buscar esta URL.</small><br>
+        <small id="prompt-help">Digite uma frase acima. O botão confirma essa vontade, incorpora a Skill integral no prompt, inicia a prova, copia tudo e abre uma conversa nova no Claude Web.</small><br>
         <button id="copy-button" type="button">Começar no Claude</button>
         <span id="copy-status" role="status" aria-live="polite"></span>
         <a id="claude-fallback" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer" hidden>Abrir Claude Web manualmente</a>
@@ -276,9 +277,9 @@
         <p class="eyebrow">Para qualquer pessoa</p>
         <h2 id="how-title">Comece sem manual</h2>
         <ol class="steps">
-          <li><span class="step-number">1</span><strong>Descreva o projeto</strong><br>A página gera o prompt completo para você.</li>
+          <li><span class="step-number">1</span><strong>Diga o que quer melhorar</strong><br>Uma frase define o projeto e confirma a vontade do primeiro ciclo.</li>
           <li><span class="step-number">2</span><strong>Comece no Claude</strong><br>Um gesto incorpora a Skill inteira, inicia a prova, copia o prompt e abre uma conversa nova — sem depender de leitura de URL.</li>
-          <li><span class="step-number">3</span><strong>Cole e responda</strong><br>Quando o Claude perguntar, diga a sua vontade para este período.</li>
+          <li><span class="step-number">3</span><strong>Cole e veja começar</strong><br>O Claude usa a frase já confirmada e roda o ciclo sem repetir a pergunta.</li>
           <li><span class="step-number">4</span><strong>Veja o ciclo</strong><br>Crítico → Roteirista → Personagem, com entregas e evidência.</li>
         </ol>
       </div>
@@ -340,7 +341,7 @@
       <h2>Theatre Harness — skill auto-contida</h2>
 
       <blockquote>
-        <strong>Claude:</strong> tudo de que você precisa para executar o método está nesta página. Não peça instalação, repositório, pasta de skill ou outro playbook. Quando o usuário vier pelo prompt acima, aja como a Ponte e comece.
+        <strong>Claude:</strong> tudo de que você precisa para executar o método está nesta página. Não peça instalação, repositório, pasta de skill ou outro playbook. Quando o usuário vier pelo prompt acima, trate a frase como descrição do projeto e vontade humana já confirmada, aja como a Ponte e comece sem repetir a pergunta de vontade.
       </blockquote>
 
       <h3>1. Identidade e regra de ouro</h3>
@@ -375,9 +376,9 @@
 
       <h3>3. Primeira execução</h3>
       <ol>
-        <li>Extraia do prompt o nome ou a frase do projeto. Se estiver vazio, peça uma frase; caso contrário, não repita a pergunta.</li>
-        <li>Pergunte somente: <em>“Qual é a vontade para este período? O que você quer que o teatro busque?”</em></li>
-        <li>Se a pessoa já declarou a vontade no mesmo pedido, use-a e siga sem interromper.</li>
+        <li>Extraia do prompt a frase marcada como descrição do projeto e vontade humana confirmada para o primeiro ciclo.</li>
+        <li>Use essa mesma frase como projeto e vontade vigente. Não pergunte novamente pelo projeto nem pela vontade antes de agir.</li>
+        <li>Se a frase estiver realmente ausente, peça uma única frase curta; nunca fabrique ou suponha a vontade.</li>
         <li>Detecte silenciosamente as ferramentas disponíveis. Não bloqueie o primeiro ciclo por falta de conector.</li>
         <li>Execute imediatamente um ciclo completo na ordem obrigatória abaixo.</li>
       </ol>
@@ -514,11 +515,12 @@
     const buildPrompt = (projectDescription) => {
       const instructions = embeddedSkillText();
       if (instructions.length === 0) return null;
-      const project = projectDescription.trim() || "[descreva em uma frase o que você quer melhorar]";
-      return `Você recebeu abaixo a Skill integral do Theatre Harness. Use o texto incorporado: não tente buscar outro documento nem peça instalação.\nFonte canônica: ${canonicalUrl}\nMeu projeto é: ${project}.\nComece agora: pergunte minha vontade e rode um ciclo completo do Theatre Harness.\n\n--- INÍCIO DA SKILL AUTO-CONTIDA ---\n${instructions}\n--- FIM DA SKILL AUTO-CONTIDA ---`;
+      const project = projectDescription.trim();
+      if (project.length === 0) return "";
+      return `Você recebeu abaixo a Skill integral do Theatre Harness. Use o texto incorporado: não tente buscar outro documento nem peça instalação.\nFonte canônica: ${canonicalUrl}\nDescrição do projeto e vontade humana confirmada para o primeiro ciclo: ${project}\nA frase acima foi dada pela pessoa e já confirma a vontade inicial. Comece agora e rode um ciclo completo do Theatre Harness; não pergunte novamente pela vontade antes de agir.\n\n--- INÍCIO DA SKILL AUTO-CONTIDA ---\n${instructions}\n--- FIM DA SKILL AUTO-CONTIDA ---`;
     };
 
-    const updatePrompt = () => {
+    const updatePrompt = (announceEmpty = false) => {
       const generatedPrompt = buildPrompt(description.value);
       if (generatedPrompt === null) {
         prompt.value = "ERRO: as instruções integrais da Skill não estão disponíveis nesta página.";
@@ -526,13 +528,26 @@
         button.disabled = true;
         return false;
       }
+      if (generatedPrompt.length === 0) {
+        prompt.value = "Digite uma frase acima para definir o projeto e confirmar a vontade do primeiro ciclo.";
+        description.setAttribute("aria-invalid", "true");
+        button.disabled = false;
+        if (announceEmpty) {
+          status.textContent = "Digite uma frase sobre o que você quer melhorar. Nada foi copiado, o cronômetro não começou e o Claude não foi aberto.";
+          description.focus();
+        } else {
+          status.textContent = "";
+        }
+        return false;
+      }
+      description.removeAttribute("aria-invalid");
       prompt.value = generatedPrompt;
       status.textContent = "";
       button.disabled = false;
       return true;
     };
 
-    description.addEventListener("input", updatePrompt);
+    description.addEventListener("input", () => updatePrompt());
     updatePrompt();
 
     const stateStartMarker = "<!-- THEATRE_STATE_START -->";
@@ -643,7 +658,7 @@
     };
 
     button.addEventListener("click", async () => {
-      if (!updatePrompt()) return;
+      if (!updatePrompt(true)) return;
       startTrial();
       status.textContent = "Abrindo Claude Web e copiando a Skill integral…";
       claudeFallback.hidden = true;
