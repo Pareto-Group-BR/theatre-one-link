@@ -316,6 +316,9 @@
             <button id="copy-proof-button" type="button" hidden>Copiar comprovante</button>
             <button id="download-proof-button" class="secondary-action" type="button" hidden>Baixar recibo JSON</button>
             <a id="proof-download" hidden download></a>
+            <button id="download-state-button" class="secondary-action" type="button" hidden>Baixar memória portátil</button>
+            <a id="state-download" hidden download></a>
+            <p id="state-export-status" class="privacy-note" role="status" aria-live="polite">Depois de um ciclo válido, a memória canônica poderá ser baixada como Markdown para continuar em outra conversa ou Project.</p>
           </div>
         </div>
         <div class="recording-controls" aria-labelledby="proof-files-title">
@@ -404,8 +407,9 @@
         <li><strong>Sem persistência:</strong> mantenha o bloco na conversa e avise que ele não sobreviverá a uma conversa nova.</li>
       </ul>
 
-      <p>Formato canônico:</p>
-      <pre>## 🌉 Estado do teatro
+      <p>Formato canônico: envolva o bloco exatamente com os dois marcadores invisíveis abaixo. Eles permitem que a página baixe somente a memória, sem misturar o restante da resposta.</p>
+      <pre>&lt;!-- THEATRE_STATE_START --&gt;
+## 🌉 Estado do teatro
 - Projeto: &lt;nome&gt;
 - Vontade vigente: &lt;frase&gt; (confirmada AAAA-MM-DD)
 - Ambiente e memória: &lt;fonte realmente usada&gt;
@@ -421,7 +425,8 @@
 - &lt;lições acumuladas; não apague falhas passadas&gt;
 
 ### Exames de Consciência
-- AAAA-MM-DD &lt;slot&gt; — vontade: “...” — status: confirmed|pending</pre>
+- AAAA-MM-DD &lt;slot&gt; — vontade: “...” — status: confirmed|pending
+&lt;!-- THEATRE_STATE_END --&gt;</pre>
 
       <h3>7. Ações externas e evidência</h3>
       <ul>
@@ -461,6 +466,9 @@
     const copyProofButton = document.querySelector("#copy-proof-button");
     const downloadProofButton = document.querySelector("#download-proof-button");
     const proofDownload = document.querySelector("#proof-download");
+    const downloadStateButton = document.querySelector("#download-state-button");
+    const stateDownload = document.querySelector("#state-download");
+    const stateExportStatus = document.querySelector("#state-export-status");
     const startRecordingButton = document.querySelector("#start-recording-button");
     const stopRecordingButton = document.querySelector("#stop-recording-button");
     const recordingStatus = document.querySelector("#recording-status");
@@ -499,6 +507,7 @@
     let recordingStartedAt = null;
     let videoFinalizationState = "none";
     let lastVideoProof = null;
+    let lastPortableState = null;
 
     const embeddedSkillText = () => skillInstructions?.textContent?.trim() ?? "";
 
@@ -525,6 +534,65 @@
 
     description.addEventListener("input", updatePrompt);
     updatePrompt();
+
+    const stateStartMarker = "<!-- THEATRE_STATE_START -->";
+    const stateEndMarker = "<!-- THEATRE_STATE_END -->";
+    const portableStateSections = [
+      /^##\s*🌉\s*Estado do teatro\s*$/gim,
+      /^###\s*Ciclos(?:\s*\([^\n]*\))?\s*$/gim,
+      /^###\s*Aprendizados\s*$/gim,
+      /^###\s*Exames de Consciência\s*$/gim,
+    ];
+
+    const invalidatePortableState = (message) => {
+      lastPortableState = null;
+      downloadStateButton.hidden = true;
+      stateExportStatus.textContent = message;
+    };
+
+    const extractPortableState = (output) => {
+      const start = output.indexOf(stateStartMarker);
+      const end = output.indexOf(stateEndMarker);
+      const uniqueBoundaries = start >= 0
+        && end > start
+        && start === output.lastIndexOf(stateStartMarker)
+        && end === output.lastIndexOf(stateEndMarker);
+      if (!uniqueBoundaries) {
+        return { ok: false, reason: "A resposta não trouxe um único bloco de memória delimitado. Rode novamente com a Skill atual; nenhum arquivo parcial foi emitido." };
+      }
+
+      const state = output.slice(start + stateStartMarker.length, end).trim();
+      if (state.includes(stateStartMarker) || state.includes(stateEndMarker)) {
+        return { ok: false, reason: "A memória contém delimitadores aninhados e é ambígua. Nenhum arquivo foi emitido." };
+      }
+
+      const positions = [];
+      for (const pattern of portableStateSections) {
+        pattern.lastIndex = 0;
+        const matches = [...state.matchAll(pattern)];
+        if (matches.length !== 1 || matches[0].index === undefined) {
+          return { ok: false, reason: "A memória não contém exatamente uma vez Estado, Ciclos, Aprendizados e Exames de Consciência. Nenhum arquivo parcial foi emitido." };
+        }
+        positions.push(matches[0].index);
+      }
+      if (!positions.every((position, index) => index === 0 || position > positions[index - 1])) {
+        return { ok: false, reason: "As seções da memória estão fora da ordem canônica. Nenhum arquivo foi emitido." };
+      }
+
+      return { ok: true, markdown: `${state}\n` };
+    };
+
+    const safeProjectSlug = (value) => {
+      const slug = value
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 48)
+        .replace(/-+$/g, "");
+      return slug || "projeto";
+    };
 
     const restoreTrialState = () => {
       if (storedTrial.invalid) {
@@ -567,6 +635,7 @@
       copyProofButton.hidden = true;
       downloadProofButton.hidden = true;
       lastProofReceipt = null;
+      invalidatePortableState("Novo ciclo iniciado. A memória anterior foi descartada; confira a nova resposta antes de baixar.");
       proofResult.dataset.status = "idle";
       proofResult.textContent = persisted
         ? "Cronômetro iniciado. Cole o prompt no Claude e volte com a resposta completa. Copiar de novo reinicia a prova; recarregar esta aba retoma o horário."
@@ -764,6 +833,7 @@
       const checklist = labels.map((label, index) => `${checks[index] ? "✓" : "✗"} ${label}`).join(" · ");
       const passed = checks.every(Boolean);
       const responseDigest = await sha256Hex(output);
+      const portableState = extractPortableState(output);
 
       lastProof = `${passed ? "PASSOU" : "INCOMPLETO"} — prova local Theatre Harness — ${elapsedSeconds}s — ${checklist} — ${canonicalUrl}`;
       lastProofReceipt = {
@@ -804,6 +874,18 @@
       proofResult.textContent = lastProof;
       copyProofButton.hidden = false;
       downloadProofButton.hidden = false;
+      if (passed && portableState.ok) {
+        lastPortableState = {
+          markdown: portableState.markdown,
+          fileName: `estado-teatro-${safeProjectSlug(description.value)}.md`,
+        };
+        downloadStateButton.hidden = false;
+        stateExportStatus.textContent = "Memória canônica pronta para baixar. O arquivo fica somente no seu dispositivo e pode ser anexado a outra conversa ou Project.";
+      } else {
+        invalidatePortableState(passed
+          ? portableState.reason
+          : "O ciclo está incompleto; a memória portátil só é emitida depois que a prova estrutural passa.");
+      }
     };
 
     verifyButton.addEventListener("click", verifyCycle);
@@ -823,6 +905,22 @@
       proofDownload.download = `${lastProofReceipt.receiptId}.json`;
       proofDownload.click();
       URL.revokeObjectURL(blobUrl);
+    });
+    downloadStateButton.addEventListener("click", () => {
+      if (lastPortableState === null) return;
+      const blobUrl = URL.createObjectURL(new Blob([lastPortableState.markdown], { type: "text/markdown;charset=utf-8" }));
+      stateDownload.href = blobUrl;
+      stateDownload.download = lastPortableState.fileName;
+      stateDownload.click();
+      URL.revokeObjectURL(blobUrl);
+      stateExportStatus.textContent = `${lastPortableState.fileName} baixado. A resposta continua somente nesta aba; o arquivo foi criado por um gesto explícito.`;
+    });
+
+    cycleOutput.addEventListener("input", () => {
+      copyProofButton.hidden = true;
+      downloadProofButton.hidden = true;
+      lastProofReceipt = null;
+      invalidatePortableState("A resposta mudou. Confira o ciclo novamente para gerar recibo e memória a partir dos mesmos bytes.");
     });
 
     const failProofFiles = (message) => {
