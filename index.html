@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Theatre Harness em um link: copie, cole no Claude e rode um ciclo sem instalação ou conta GitHub.">
+  <meta name="description" content="Theatre Harness em um link: abra no Claude Web ou Desktop e rode um ciclo sem instalação ou conta GitHub.">
   <title>Theatre Harness — um link, um ciclo</title>
   <style>
     :root {
@@ -263,10 +263,12 @@
         <small id="project-help">Essa frase vira a descrição do projeto e a vontade humana já confirmada para o primeiro ciclo. O Claude começa sem perguntar de novo.</small>
         <label for="copy-prompt">Prompt gerado</label>
         <textarea id="copy-prompt" readonly aria-describedby="prompt-help">Preparando o prompt auto-contido com a Skill integral desta página…</textarea>
-        <small id="prompt-help">Digite uma frase acima. O botão confirma essa vontade, incorpora a Skill integral no prompt, inicia a prova, copia tudo e abre uma conversa nova no Claude Web.</small><br>
+        <small id="prompt-help">Digite uma frase acima. No Web, a página copia a Skill e abre uma conversa nova. No Desktop, o app abre com a mesma Skill já preenchida para você revisar e enviar.</small><br>
         <button id="copy-button" type="button">Começar no Claude</button>
+        <button id="desktop-button" class="secondary-action" type="button">Abrir no Claude Desktop</button>
         <span id="copy-status" role="status" aria-live="polite"></span>
         <a id="claude-fallback" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer" hidden>Abrir Claude Web manualmente</a>
+        <br><small>O caminho Desktop requer o app instalado e só preenche o composer: você revisa e envia. Se a Skill integral exceder o limite seguro, a página recusa em vez de truncar.</small>
       </div>
     </div>
   </header>
@@ -278,8 +280,8 @@
         <h2 id="how-title">Comece sem manual</h2>
         <ol class="steps">
           <li><span class="step-number">1</span><strong>Diga o que quer melhorar</strong><br>Uma frase define o projeto e confirma a vontade do primeiro ciclo.</li>
-          <li><span class="step-number">2</span><strong>Comece no Claude</strong><br>Um gesto incorpora a Skill inteira, inicia a prova, copia o prompt e abre uma conversa nova — sem depender de leitura de URL.</li>
-          <li><span class="step-number">3</span><strong>Cole e veja começar</strong><br>O Claude usa a frase já confirmada e roda o ciclo sem repetir a pergunta.</li>
+          <li><span class="step-number">2</span><strong>Escolha Web ou Desktop</strong><br>Um gesto incorpora a Skill inteira e inicia a prova. No Desktop, o prompt já chega preenchido; no Web, ele é copiado.</li>
+          <li><span class="step-number">3</span><strong>Envie e veja começar</strong><br>No Desktop, revise e envie. No Web, cole. O Claude usa a frase já confirmada e roda o ciclo sem repetir a pergunta.</li>
           <li><span class="step-number">4</span><strong>Veja o ciclo</strong><br>Crítico → Roteirista → Personagem, com entregas e evidência.</li>
         </ol>
       </div>
@@ -289,7 +291,7 @@
       <div class="wrap">
         <p class="eyebrow">Prova do primeiro ciclo</p>
         <h2 id="proof-title">Confirme em menos de 5 minutos</h2>
-        <p>O cronômetro começa quando você toca em <strong>Começar no Claude</strong>. Depois que o Claude responder, volte: com a prova ativa, o campo já fica pronto para você colar. Quando o navegador expõe os bytes da colagem, a conferência começa automaticamente. O botão <strong>Verificar ciclo</strong> continua disponível como fallback.</p>
+        <p>O cronômetro começa quando você usa <strong>Começar no Claude</strong> ou <strong>Abrir no Claude Desktop</strong>. Depois que o Claude responder, volte: com a prova ativa, o campo já fica pronto para você colar. Quando o navegador expõe os bytes da colagem, a conferência começa automaticamente. O botão <strong>Verificar ciclo</strong> continua disponível como fallback.</p>
         <div class="recording-controls" aria-labelledby="recording-title">
           <strong id="recording-title">Vídeo da prova (opcional)</strong>
           <p>Antes de começar, grave a tela sem instalar nada. No seletor do navegador, escolha a tela ou janela que mostrará o Claude; capturar só esta aba não registra a conversa.</p>
@@ -457,6 +459,7 @@
 
   <script>
     const button = document.querySelector("#copy-button");
+    const desktopButton = document.querySelector("#desktop-button");
     const description = document.querySelector("#project-description");
     const prompt = document.querySelector("#copy-prompt");
     const status = document.querySelector("#copy-status");
@@ -483,6 +486,8 @@
     const proofFilesResult = document.querySelector("#proof-files-result");
     const canonicalUrl = "https://pareto-group-br.github.io/theatre-one-link/";
     const claudeNewConversationUrl = "https://claude.ai/new";
+    const claudeDesktopConversationUrl = "claude://claude.ai/new";
+    const claudeDesktopPromptLimit = 12000;
     const proofThresholdMs = Number(proofSection.dataset.proofThresholdMs);
     const proofDisclaimer = "Este recibo prova somente a checagem estrutural e temporal local; observação humana e qualidade substantiva não foram verificadas.";
     const storageKey = "theatre-one-link-trial-started-at";
@@ -529,12 +534,14 @@
         prompt.value = "ERRO: as instruções integrais da Skill não estão disponíveis nesta página.";
         status.textContent = "Não foi possível preparar a Skill. A prova não começou e o Claude não será aberto.";
         button.disabled = true;
+        desktopButton.disabled = true;
         return false;
       }
       if (generatedPrompt.length === 0) {
         prompt.value = "Digite uma frase acima para definir o projeto e confirmar a vontade do primeiro ciclo.";
         description.setAttribute("aria-invalid", "true");
         button.disabled = false;
+        desktopButton.disabled = false;
         if (announceEmpty) {
           status.textContent = "Digite uma frase sobre o que você quer melhorar. Nada foi copiado, o cronômetro não começou e o Claude não foi aberto.";
           description.focus();
@@ -547,6 +554,7 @@
       prompt.value = generatedPrompt;
       status.textContent = "";
       button.disabled = false;
+      desktopButton.disabled = false;
       return true;
     };
 
@@ -685,6 +693,35 @@
       }
     });
 
+    const buildDesktopDeepLink = (generatedPrompt) => {
+      if (generatedPrompt.length > claudeDesktopPromptLimit) {
+        return { ok: false, reason: "limit" };
+      }
+      try {
+        return { ok: true, url: `${claudeDesktopConversationUrl}?q=${encodeURIComponent(generatedPrompt)}` };
+      } catch {
+        return { ok: false, reason: "encoding" };
+      }
+    };
+
+    desktopButton.addEventListener("click", () => {
+      if (!updatePrompt(true)) return;
+      const desktopLaunch = buildDesktopDeepLink(prompt.value);
+      if (!desktopLaunch.ok) {
+        status.textContent = desktopLaunch.reason === "limit"
+          ? "A Skill integral ficou grande demais para o limite seguro do Claude Desktop. Nada foi truncado, o cronômetro não começou e o app não foi aberto; use Começar no Claude Web."
+          : "O prompt contém texto que não pôde ser codificado com segurança. O cronômetro não começou e o app não foi aberto; ajuste a frase ou use Começar no Claude Web.";
+        return;
+      }
+      startTrial();
+      status.textContent = "Pedido enviado ao Claude Desktop com a Skill integral já preenchida. Revise e envie; se o app não abrir, use Começar no Claude Web.";
+      try {
+        window.location.assign(desktopLaunch.url);
+      } catch {
+        status.textContent = "O Claude Desktop não pôde ser acionado. A Skill não foi enviada nem truncada; use Começar no Claude Web.";
+      }
+    });
+
     const finishRecording = () => {
       if (screenRecorder?.state === "recording") screenRecorder.stop();
       for (const track of screenStream?.getTracks?.() || []) track.stop();
@@ -772,7 +809,7 @@
         videoFinalizationState = "recording";
         startRecordingButton.hidden = true;
         stopRecordingButton.hidden = false;
-        recordingStatus.textContent = "Gravação ativa. Agora use Começar no Claude; ao voltar, encerre e baixe o vídeo.";
+        recordingStatus.textContent = "Gravação ativa. Agora use o caminho Web ou Desktop acima; ao voltar, encerre e baixe o vídeo.";
       } catch {
         for (const track of screenStream?.getTracks?.() || []) track.stop();
         screenStream = null;
