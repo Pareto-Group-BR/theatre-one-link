@@ -335,6 +335,8 @@
             <button id="copy-proof-button" type="button" hidden>Copiar comprovante</button>
             <button id="download-proof-button" class="secondary-action" type="button" hidden>Baixar recibo JSON</button>
             <a id="proof-download" hidden download></a>
+            <button id="download-response-button" class="secondary-action" type="button" hidden>Baixar resposta exata</button>
+            <a id="response-download" hidden download></a>
             <button id="download-state-button" class="secondary-action" type="button" hidden>Baixar memória portátil</button>
             <a id="state-download" hidden download></a>
             <p id="state-export-status" class="privacy-note" role="status" aria-live="polite">Depois de um ciclo válido, a memória canônica poderá ser baixada como Markdown para continuar em outra conversa ou Project.</p>
@@ -382,14 +384,16 @@
         </div>
         <div class="recording-controls" aria-labelledby="proof-files-title">
           <strong id="proof-files-title">Conferir uma prova salva, sem terminal</strong>
-          <p>Cole acima a resposta exata do Claude, selecione o recibo JSON e, se ele declarar vídeo, selecione também o WebM. A página recalcula os hashes e confere o contrato inteiro localmente.</p>
+          <p>Cole acima a resposta exata do Claude, selecione o recibo JSON e, se ele declarar vídeo, selecione também o WebM. Para auditar a observação humana, anexe ainda a ficha JSON baixada depois do PASS. A página recalcula os hashes e confere o contrato inteiro localmente.</p>
           <label for="proof-receipt-file">Recibo JSON</label>
           <input id="proof-receipt-file" type="file" accept="application/json,.json">
           <label for="proof-video-file">Vídeo WebM (somente quando vinculado ao recibo)</label>
           <input id="proof-video-file" type="file" accept="video/webm,.webm">
+          <label for="proof-human-observation-file">Ficha humana JSON (opcional)</label>
+          <input id="proof-human-observation-file" type="file" accept="application/json,.json">
           <button id="verify-proof-files-button" class="secondary-action" type="button">Conferir arquivos</button>
           <div id="proof-files-result" class="proof-result" role="status" aria-live="polite" data-status="idle">Nenhum arquivo é enviado. A conferência acontece somente nesta aba.</div>
-          <p class="privacy-note">Um resultado íntegro prova que os arquivos não mudaram e que o recibo respeita o contrato <code>theatre-proof/v1</code>. Não prova que a pessoa era não-técnica nem substitui o julgamento humano da qualidade.</p>
+          <p class="privacy-note">Um resultado íntegro prova que os arquivos não mudaram, que o recibo respeita <code>theatre-proof/v1</code> e, quando anexada, que a ficha continua vinculada a essa prova. A ficha permanece uma atestação humana: o verificador não prova identidade, condição não técnica, observação, ausência de coaching nem verdade das declarações.</p>
         </div>
       </div>
     </section>
@@ -535,6 +539,8 @@
     const copyProofButton = document.querySelector("#copy-proof-button");
     const downloadProofButton = document.querySelector("#download-proof-button");
     const proofDownload = document.querySelector("#proof-download");
+    const downloadResponseButton = document.querySelector("#download-response-button");
+    const responseDownload = document.querySelector("#response-download");
     const downloadStateButton = document.querySelector("#download-state-button");
     const stateDownload = document.querySelector("#state-download");
     const stateExportStatus = document.querySelector("#state-export-status");
@@ -544,6 +550,7 @@
     const recordingDownload = document.querySelector("#recording-download");
     const proofReceiptFile = document.querySelector("#proof-receipt-file");
     const proofVideoFile = document.querySelector("#proof-video-file");
+    const proofHumanObservationFile = document.querySelector("#proof-human-observation-file");
     const verifyProofFilesButton = document.querySelector("#verify-proof-files-button");
     const proofFilesResult = document.querySelector("#proof-files-result");
     const humanObservationPanel = document.querySelector("#human-observation-panel");
@@ -594,6 +601,12 @@
     let lastVideoProof = null;
     let lastPortableState = null;
     let lastHumanObservation = null;
+    let lastVerifiedResponse = null;
+
+    const invalidateVerifiedResponse = () => {
+      lastVerifiedResponse = null;
+      downloadResponseButton.hidden = true;
+    };
 
     const resetHumanObservationFields = () => {
       observationObserverRef.value = "";
@@ -775,6 +788,7 @@
       copyProofButton.hidden = true;
       downloadProofButton.hidden = true;
       lastProofReceipt = null;
+      invalidateVerifiedResponse();
       invalidatePortableState("Novo ciclo iniciado. A memória anterior foi descartada; confira a nova resposta antes de baixar.");
       invalidateHumanObservation("Novo ciclo iniciado. Qualquer ficha anterior foi invalidada; só um novo PASS habilita outra observação.");
       proofResult.dataset.status = "idle";
@@ -948,6 +962,7 @@
     };
 
     const verifyCycle = async () => {
+      invalidateVerifiedResponse();
       if (trialStartedAt === null) {
         proofResult.dataset.status = "fail";
         proofResult.textContent = "A prova ainda não começou. Copie o prompt primeiro.";
@@ -1065,6 +1080,13 @@
       downloadProofButton.hidden = false;
       if (passed) {
         prepareHumanObservation();
+        lastVerifiedResponse = {
+          text: output,
+          receiptId: lastProofReceipt.receiptId,
+          sha256: lastProofReceipt.response.sha256,
+          utf8Bytes: lastProofReceipt.response.utf8Bytes,
+        };
+        downloadResponseButton.hidden = false;
       } else {
         invalidateHumanObservation("O ciclo ficou incompleto. A ficha humana só é habilitada depois de um PASS mecânico abaixo de cinco minutos.");
       }
@@ -1207,6 +1229,28 @@
       proofDownload.click();
       URL.revokeObjectURL(blobUrl);
     });
+    downloadResponseButton.addEventListener("click", async () => {
+      if (lastProofReceipt === null || lastProofReceipt.status !== "passed" || lastVerifiedResponse === null) return;
+      const currentDigest = await sha256Hex(lastVerifiedResponse.text);
+      const responseStillCurrent = cycleOutput.value === lastVerifiedResponse.text
+        && lastProofReceipt.receiptId === lastVerifiedResponse.receiptId
+        && lastProofReceipt.response.sha256 === lastVerifiedResponse.sha256
+        && lastProofReceipt.response.utf8Bytes === lastVerifiedResponse.utf8Bytes
+        && currentDigest.hex === lastVerifiedResponse.sha256
+        && currentDigest.byteLength === lastVerifiedResponse.utf8Bytes;
+      if (!responseStillCurrent) {
+        invalidateVerifiedResponse();
+        proofResult.dataset.status = "fail";
+        proofResult.textContent = "Resposta exata não baixada: os bytes ou o recibo mudaram depois do PASS. Confira o ciclo novamente; nenhum arquivo foi emitido.";
+        return;
+      }
+      const blobUrl = URL.createObjectURL(new Blob([lastVerifiedResponse.text], { type: "text/plain;charset=utf-8" }));
+      responseDownload.href = blobUrl;
+      responseDownload.download = `${lastVerifiedResponse.receiptId}-response.txt`;
+      responseDownload.click();
+      URL.revokeObjectURL(blobUrl);
+      proofResult.textContent = `${lastProof}\nResposta exata baixada por gesto explícito; nenhum byte foi normalizado, persistido silenciosamente ou enviado.`;
+    });
     const failHumanObservation = (message, field = null) => {
       lastHumanObservation = null;
       humanObservationStatus.textContent = `FICHA NÃO GERADA — ${message}`;
@@ -1216,7 +1260,7 @@
       }
     };
 
-    downloadHumanObservationButton.addEventListener("click", () => {
+    downloadHumanObservationButton.addEventListener("click", async () => {
       if (lastProofReceipt?.status !== "passed") {
         failHumanObservation("é necessário um PASS mecânico atual; reinicie e confira o ciclo antes de atestar.");
         return;
@@ -1265,7 +1309,19 @@
         failHumanObservation("o horário da atestação é inválido ou anterior ao fim da prova.");
         return;
       }
-      const observationId = `tho-${attestedAtEpochMs}-${lastProofReceipt.response.sha256.slice(0, 12)}`;
+      const humanAttestation = {
+        observerRef,
+        environment,
+        evidenceMode,
+        participantNonTechnical: observationNonTechnical.checked,
+        noCoaching: observationNoCoaching.checked,
+        observedFullCycle: observationFullCycle.checked,
+        causalTransitionExplained: observationCausalExplanation.checked,
+        participantWords,
+        attestedAtEpochMs,
+      };
+      const humanAttestationDigest = await sha256Hex(JSON.stringify(humanAttestation));
+      const observationId = `tho-${attestedAtEpochMs}-${humanAttestationDigest.hex.slice(0, 12)}`;
       lastHumanObservation = {
         schema: "theatre-human-observation/v1",
         observationId,
@@ -1282,16 +1338,11 @@
           elapsedMs: lastProofReceipt.trial.elapsedMs,
           thresholdMs: lastProofReceipt.trial.thresholdMs,
         },
-        humanAttestation: {
-          observerRef,
-          environment,
-          evidenceMode,
-          participantNonTechnical: observationNonTechnical.checked,
-          noCoaching: observationNoCoaching.checked,
-          observedFullCycle: observationFullCycle.checked,
-          causalTransitionExplained: observationCausalExplanation.checked,
-          participantWords,
-          attestedAtEpochMs,
+        humanAttestation,
+        humanAttestationDigest: {
+          algorithm: "SHA-256",
+          sha256: humanAttestationDigest.hex,
+          utf8Bytes: humanAttestationDigest.byteLength,
         },
         privacy: {
           projectIncluded: false,
@@ -1324,6 +1375,7 @@
       copyProofButton.hidden = true;
       downloadProofButton.hidden = true;
       lastProofReceipt = null;
+      invalidateVerifiedResponse();
       invalidatePortableState("A resposta mudou. Confira o ciclo novamente para gerar recibo e memória a partir dos mesmos bytes.");
       invalidateHumanObservation("A resposta mudou. A ficha humana anterior foi invalidada; confira o ciclo novamente e só então registre uma observação real.");
     });
@@ -1340,11 +1392,18 @@
       return Object.entries(value).some(([key, child]) => forbidden.has(key) || hasPrivateContentKey(child));
     };
 
+    const hasExactKeys = (value, expectedKeys) => value !== null
+      && !Array.isArray(value)
+      && typeof value === "object"
+      && Object.keys(value).length === expectedKeys.length
+      && expectedKeys.every((key) => Object.prototype.hasOwnProperty.call(value, key));
+
     const verifyProofFiles = async () => {
       proofFilesResult.dataset.status = "idle";
       proofFilesResult.textContent = "Conferindo recibo e hashes localmente…";
       const receiptFile = proofReceiptFile.files?.[0];
       const videoFile = proofVideoFile.files?.[0] ?? null;
+      const observationFile = proofHumanObservationFile.files?.[0] ?? null;
       if (!receiptFile) {
         failProofFiles("selecione o recibo JSON.");
         return;
@@ -1408,8 +1467,74 @@
           throw new Error("estado do vídeo inválido");
         }
 
+        if (observationFile !== null) {
+          if (receipt.status !== "passed") throw new Error("uma ficha humana só pode estar vinculada a uma prova mecânica passed");
+          const observation = JSON.parse(await observationFile.text());
+          if (observation === null || Array.isArray(observation) || typeof observation !== "object") throw new Error("a ficha humana não é um objeto JSON");
+          if (observation.schema !== "theatre-human-observation/v1") throw new Error("schema da ficha ausente ou diferente de theatre-human-observation/v1");
+          if (observation.generatedBy !== "Theatre Harness one-link human observation form" || observation.verifierUrl !== canonicalUrl) throw new Error("origem canônica da ficha humana não confere");
+          if (hasPrivateContentKey(observation)) throw new Error("a ficha humana contém campo de conteúdo privado proibido");
+          if (!hasExactKeys(observation, ["schema", "observationId", "generatedBy", "verifierUrl", "proofBinding", "humanAttestation", "humanAttestationDigest", "privacy", "claim"])) throw new Error("a ficha humana contém campos ausentes ou extras fora do contrato");
+
+          const binding = observation.proofBinding;
+          if (!hasExactKeys(binding, ["receiptSchema", "receiptId", "responseDigestAlgorithm", "responseSha256", "videoSha256", "startedAtEpochMs", "completedAtEpochMs", "elapsedMs", "thresholdMs"])) throw new Error("o vínculo da ficha humana contém campos ausentes ou extras");
+          const expectedVideoSha256 = video?.status === "linked" ? video.sha256 : null;
+          if (!binding
+            || binding.receiptSchema !== receipt.schema
+            || binding.receiptId !== receipt.receiptId
+            || binding.responseDigestAlgorithm !== "SHA-256"
+            || binding.responseSha256 !== receipt.response.sha256
+            || binding.videoSha256 !== expectedVideoSha256
+            || binding.startedAtEpochMs !== trial.startedAtEpochMs
+            || binding.completedAtEpochMs !== trial.completedAtEpochMs
+            || binding.elapsedMs !== trial.elapsedMs
+            || binding.thresholdMs !== trial.thresholdMs) {
+            throw new Error("a ficha humana não corresponde ao recibo, aos hashes ou aos tempos desta prova");
+          }
+
+          const attestation = observation.humanAttestation;
+          if (!hasExactKeys(attestation, ["observerRef", "environment", "evidenceMode", "participantNonTechnical", "noCoaching", "observedFullCycle", "causalTransitionExplained", "participantWords", "attestedAtEpochMs"])) throw new Error("a atestação humana contém campos ausentes ou extras");
+          const observerRefIsValid = typeof attestation?.observerRef === "string"
+            && attestation.observerRef === attestation.observerRef.trim()
+            && attestation.observerRef.length >= 2
+            && attestation.observerRef.length <= 100;
+          const participantWordsAreValid = typeof attestation?.participantWords === "string"
+            && attestation.participantWords === attestation.participantWords.trim()
+            && attestation.participantWords.length >= 12
+            && attestation.participantWords.length <= 1000;
+          const environmentIsValid = new Set(["web", "desktop"]).has(attestation?.environment);
+          const evidenceModeIsValid = new Set(["linked-video", "screenshare", "in-person"]).has(attestation?.evidenceMode);
+          const explicitClaimsAreValid = attestation?.participantNonTechnical === true
+            && attestation?.noCoaching === true
+            && attestation?.observedFullCycle === true
+            && attestation?.causalTransitionExplained === true;
+          const attestedAtIsValid = Number.isSafeInteger(attestation?.attestedAtEpochMs)
+            && attestation.attestedAtEpochMs >= trial.completedAtEpochMs
+            && attestation.attestedAtEpochMs <= Date.now();
+          if (!observerRefIsValid || !participantWordsAreValid || !environmentIsValid || !evidenceModeIsValid || !explicitClaimsAreValid || !attestedAtIsValid) {
+            throw new Error("a ficha humana não contém todas as atestações explícitas válidas");
+          }
+          if (attestation.evidenceMode === "linked-video" && video?.status !== "linked") throw new Error("a ficha declara vídeo vinculado, mas o recibo não contém esse WebM");
+          const attestationDigest = observation.humanAttestationDigest;
+          if (!hasExactKeys(attestationDigest, ["algorithm", "sha256", "utf8Bytes"]) || attestationDigest.algorithm !== "SHA-256") throw new Error("o vínculo SHA-256 da atestação humana não confere");
+          const recomputedAttestationDigest = await sha256Hex(JSON.stringify(attestation));
+          if (attestationDigest.sha256 !== recomputedAttestationDigest.hex || attestationDigest.utf8Bytes !== recomputedAttestationDigest.byteLength) throw new Error("a atestação humana foi alterada depois de ser vinculada por SHA-256");
+          const expectedObservationId = `tho-${attestation.attestedAtEpochMs}-${recomputedAttestationDigest.hex.slice(0, 12)}`;
+          if (observation.observationId !== expectedObservationId) throw new Error("o identificador da ficha humana não corresponde ao atestado e à resposta");
+
+          const observationPrivacy = observation.privacy;
+          if (!hasExactKeys(observationPrivacy, ["projectIncluded", "responseIncluded", "videoIncluded", "participantWordsIncluded"])
+            || observationPrivacy.projectIncluded !== false
+            || observationPrivacy.responseIncluded !== false
+            || observationPrivacy.videoIncluded !== false
+            || observationPrivacy.participantWordsIncluded !== true) {
+            throw new Error("as garantias de privacidade da ficha humana não conferem");
+          }
+          if (observation.claim !== humanObservationClaim) throw new Error("o limite honesto da atestação humana foi alterado");
+        }
+
         proofFilesResult.dataset.status = "pass";
-        proofFilesResult.textContent = `ÍNTEGRO (${receipt.status === "passed" ? "ciclo passou" : "ciclo incompleto"}) — recibo, resposta${videoFile ? " e vídeo" : ""} correspondem por SHA-256. Isso não substitui o julgamento humano da qualidade.`;
+        proofFilesResult.textContent = `ÍNTEGRO (${receipt.status === "passed" ? "ciclo passou" : "ciclo incompleto"}) — recibo, resposta${videoFile ? " e vídeo" : ""}${observationFile ? " e ficha humana" : ""} correspondem. A ficha, quando presente, continua sendo uma atestação humana; isto não prova as declarações. Isso não substitui o julgamento humano da qualidade.`;
       } catch (error) {
         failProofFiles(error instanceof Error ? error.message : "falha inesperada ao ler os arquivos");
       }
