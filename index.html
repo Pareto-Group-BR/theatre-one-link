@@ -107,7 +107,7 @@
       font-weight: 800;
     }
 
-    input, textarea {
+    input, textarea, select {
       display: block;
       width: 100%;
       padding: 1rem;
@@ -140,7 +140,8 @@
       cursor: pointer;
     }
 
-    button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
+    select { margin-bottom: 1rem; }
+    button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
     #copy-status { margin-left: .8rem; color: var(--green); }
 
     .proof-grid {
@@ -172,6 +173,16 @@
     }
     .recording-controls p { margin: .55rem 0 0; }
     #recording-status { display: block; margin-top: .65rem; color: var(--green); }
+    .observation-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+      gap: 0 1rem;
+    }
+    .observation-checks { margin: .5rem 0; padding: 0; border: 0; }
+    .observation-checks legend { margin-bottom: .55rem; font-weight: 800; }
+    .observation-checks label { display: flex; gap: .65rem; align-items: flex-start; font-weight: 500; }
+    .observation-checks input { width: auto; margin: .25rem 0 0; flex: 0 0 auto; }
+    #human-observation-status { display: block; margin-top: .65rem; color: var(--green); }
 
     main > section, article {
       padding: 5rem 0;
@@ -328,6 +339,46 @@
             <a id="state-download" hidden download></a>
             <p id="state-export-status" class="privacy-note" role="status" aria-live="polite">Depois de um ciclo válido, a memória canônica poderá ser baixada como Markdown para continuar em outra conversa ou Project.</p>
           </div>
+        </div>
+        <div id="human-observation-panel" class="recording-controls" aria-labelledby="human-observation-title" hidden>
+          <strong id="human-observation-title">Ficha da observação humana</strong>
+          <p>Esta etapa só aparece depois de um PASS mecânico. Quem realmente presenciou a sessão registra o ambiente, como observou e as palavras da pessoa; a landing liga a ficha ao recibo e aos hashes, sem transformar atestação humana em prova independente.</p>
+          <div class="observation-grid">
+            <div>
+              <label for="observation-observer-ref">Identificador do observador</label>
+              <input id="observation-observer-ref" type="text" autocomplete="off" placeholder="Ex.: observador-01">
+            </div>
+            <div>
+              <label for="observation-environment">Ambiente usado</label>
+              <select id="observation-environment">
+                <option value="">Selecione</option>
+                <option value="web">Claude Web</option>
+                <option value="desktop">Claude Desktop</option>
+              </select>
+            </div>
+            <div>
+              <label for="observation-evidence-mode">Como a sessão foi observada</label>
+              <select id="observation-evidence-mode">
+                <option value="">Selecione</option>
+                <option value="linked-video">Vídeo vinculado ao recibo</option>
+                <option value="screenshare">Screenshare observado</option>
+                <option value="in-person">Observação presencial</option>
+              </select>
+            </div>
+          </div>
+          <fieldset class="observation-checks">
+            <legend>Atestações explícitas</legend>
+            <label><input id="observation-non-technical" type="checkbox"> A participante era uma pessoa não técnica, sem contexto prévio do Theatre.</label>
+            <label><input id="observation-no-coaching" type="checkbox"> O ciclo ocorreu sem coaching técnico durante a execução.</label>
+            <label><input id="observation-full-cycle" type="checkbox"> Observei o ciclo completo ligado ao recibo abaixo de cinco minutos.</label>
+            <label><input id="observation-causal-explanation" type="checkbox"> A pessoa explicou com as próprias palavras ao menos uma transição causal.</label>
+          </fieldset>
+          <label for="observation-participant-words">Palavras da pessoa sobre o que percebeu de diferente</label>
+          <textarea id="observation-participant-words" placeholder="Registre a frase espontânea, sem reescrever por ela."></textarea>
+          <button id="download-human-observation-button" type="button">Baixar ficha humana vinculada</button>
+          <a id="human-observation-download" hidden download></a>
+          <span id="human-observation-status" role="status" aria-live="polite">Somente quem realmente observou deve preencher. Nada é atestado automaticamente.</span>
+          <p class="privacy-note">O JSON inclui o identificador do observador e a frase informada. Não inclui projeto, resposta ou vídeo; referencia apenas o recibo, tempos e hashes SHA-256. Identidade, condição não técnica, ausência de coaching e explicação causal são atestadas, não independentemente comprovadas.</p>
         </div>
         <div class="recording-controls" aria-labelledby="proof-files-title">
           <strong id="proof-files-title">Conferir uma prova salva, sem terminal</strong>
@@ -495,6 +546,18 @@
     const proofVideoFile = document.querySelector("#proof-video-file");
     const verifyProofFilesButton = document.querySelector("#verify-proof-files-button");
     const proofFilesResult = document.querySelector("#proof-files-result");
+    const humanObservationPanel = document.querySelector("#human-observation-panel");
+    const observationObserverRef = document.querySelector("#observation-observer-ref");
+    const observationEnvironment = document.querySelector("#observation-environment");
+    const observationEvidenceMode = document.querySelector("#observation-evidence-mode");
+    const observationNonTechnical = document.querySelector("#observation-non-technical");
+    const observationNoCoaching = document.querySelector("#observation-no-coaching");
+    const observationFullCycle = document.querySelector("#observation-full-cycle");
+    const observationCausalExplanation = document.querySelector("#observation-causal-explanation");
+    const observationParticipantWords = document.querySelector("#observation-participant-words");
+    const downloadHumanObservationButton = document.querySelector("#download-human-observation-button");
+    const humanObservationDownload = document.querySelector("#human-observation-download");
+    const humanObservationStatus = document.querySelector("#human-observation-status");
     const canonicalUrl = "https://pareto-group-br.github.io/theatre-one-link/";
     const claudeNewConversationUrl = "https://claude.ai/new";
     const claudeDesktopConversationUrl = "claude://claude.ai/new";
@@ -502,6 +565,7 @@
     const proofChallenge = "Quero criar uma caça ao tesouro de 15 minutos dentro de casa para surpreender alguém, usando apenas cinco objetos comuns, sem comprar nada. As pistas devem ser divertidas, progressivas e terminar com uma pequena mensagem afetiva.";
     const proofThresholdMs = Number(proofSection.dataset.proofThresholdMs);
     const proofDisclaimer = "Este recibo prova somente a checagem estrutural e temporal local; observação humana e qualidade substantiva não foram verificadas.";
+    const humanObservationClaim = "Observação humana atestada, não independentemente comprovada; o arquivo apenas vincula a declaração ao recibo e aos hashes da prova.";
     const storageKey = "theatre-one-link-trial-started-at";
     const readStoredTrial = () => {
       try {
@@ -529,6 +593,34 @@
     let videoFinalizationState = "none";
     let lastVideoProof = null;
     let lastPortableState = null;
+    let lastHumanObservation = null;
+
+    const resetHumanObservationFields = () => {
+      observationObserverRef.value = "";
+      observationEnvironment.value = "";
+      observationEvidenceMode.value = "";
+      observationNonTechnical.checked = false;
+      observationNoCoaching.checked = false;
+      observationFullCycle.checked = false;
+      observationCausalExplanation.checked = false;
+      observationParticipantWords.value = "";
+      for (const field of [observationObserverRef, observationEnvironment, observationEvidenceMode, observationParticipantWords]) {
+        field.removeAttribute("aria-invalid");
+      }
+    };
+
+    const invalidateHumanObservation = (message) => {
+      lastHumanObservation = null;
+      humanObservationPanel.hidden = true;
+      humanObservationStatus.textContent = message;
+    };
+
+    const prepareHumanObservation = () => {
+      resetHumanObservationFields();
+      lastHumanObservation = null;
+      humanObservationPanel.hidden = false;
+      humanObservationStatus.textContent = "PASS mecânico vinculado. Somente quem realmente observou deve preencher; nada é atestado automaticamente.";
+    };
 
     const embeddedSkillText = () => skillInstructions?.textContent?.trim() ?? "";
 
@@ -684,6 +776,7 @@
       downloadProofButton.hidden = true;
       lastProofReceipt = null;
       invalidatePortableState("Novo ciclo iniciado. A memória anterior foi descartada; confira a nova resposta antes de baixar.");
+      invalidateHumanObservation("Novo ciclo iniciado. Qualquer ficha anterior foi invalidada; só um novo PASS habilita outra observação.");
       proofResult.dataset.status = "idle";
       proofResult.textContent = persisted
         ? "Cronômetro iniciado. Cole o prompt no Claude e volte com a resposta completa. Copiar de novo reinicia a prova; recarregar esta aba retoma o horário."
@@ -859,6 +952,7 @@
         proofResult.dataset.status = "fail";
         proofResult.textContent = "A prova ainda não começou. Copie o prompt primeiro.";
         copyProofButton.hidden = true;
+        invalidateHumanObservation("A prova ainda não começou. Nenhuma ficha humana pode ser vinculada.");
         return;
       }
       const completedAt = Date.now();
@@ -868,6 +962,7 @@
         copyProofButton.hidden = true;
         downloadProofButton.hidden = true;
         lastProofReceipt = null;
+        invalidateHumanObservation("O cronômetro ficou inválido. Nenhuma ficha humana pode ser vinculada.");
         return;
       }
       if (videoFinalizationState === "recording" || videoFinalizationState === "hashing") {
@@ -876,6 +971,7 @@
         copyProofButton.hidden = true;
         downloadProofButton.hidden = true;
         lastProofReceipt = null;
+        invalidateHumanObservation("O vídeo ainda não foi finalizado. Nenhuma ficha humana pode ser vinculada.");
         return;
       }
       if (videoFinalizationState === "failed") {
@@ -884,6 +980,7 @@
         copyProofButton.hidden = true;
         downloadProofButton.hidden = true;
         lastProofReceipt = null;
+        invalidateHumanObservation("A gravação falhou. Nenhuma ficha humana pode ser vinculada.");
         return;
       }
       if (lastVideoProof !== null && lastVideoProof.startedAtEpochMs > trialStartedAt) {
@@ -892,6 +989,7 @@
         copyProofButton.hidden = true;
         downloadProofButton.hidden = true;
         lastProofReceipt = null;
+        invalidateHumanObservation("O vídeo não cobre a prova inteira. Nenhuma ficha humana pode ser vinculada.");
         return;
       }
 
@@ -965,6 +1063,11 @@
       proofResult.textContent = lastProof;
       copyProofButton.hidden = false;
       downloadProofButton.hidden = false;
+      if (passed) {
+        prepareHumanObservation();
+      } else {
+        invalidateHumanObservation("O ciclo ficou incompleto. A ficha humana só é habilitada depois de um PASS mecânico abaixo de cinco minutos.");
+      }
       if (passed && portableState.ok) {
         lastPortableState = {
           markdown: portableState.markdown,
@@ -1104,6 +1207,108 @@
       proofDownload.click();
       URL.revokeObjectURL(blobUrl);
     });
+    const failHumanObservation = (message, field = null) => {
+      lastHumanObservation = null;
+      humanObservationStatus.textContent = `FICHA NÃO GERADA — ${message}`;
+      if (field !== null) {
+        field.setAttribute("aria-invalid", "true");
+        field.focus();
+      }
+    };
+
+    downloadHumanObservationButton.addEventListener("click", () => {
+      if (lastProofReceipt?.status !== "passed") {
+        failHumanObservation("é necessário um PASS mecânico atual; reinicie e confira o ciclo antes de atestar.");
+        return;
+      }
+
+      const observerRef = observationObserverRef.value.trim();
+      if (observerRef.length < 2 || observerRef.length > 100) {
+        failHumanObservation("informe um identificador do observador entre 2 e 100 caracteres.", observationObserverRef);
+        return;
+      }
+      const environment = observationEnvironment.value;
+      if (!new Set(["web", "desktop"]).has(environment)) {
+        failHumanObservation("selecione o ambiente Web ou Desktop realmente usado.", observationEnvironment);
+        return;
+      }
+      const evidenceMode = observationEvidenceMode.value;
+      if (!new Set(["linked-video", "screenshare", "in-person"]).has(evidenceMode)) {
+        failHumanObservation("selecione como a sessão foi realmente observada.", observationEvidenceMode);
+        return;
+      }
+      if (evidenceMode === "linked-video" && lastProofReceipt.video?.status !== "linked") {
+        failHumanObservation("vídeo vinculado foi selecionado, mas o recibo atual não contém SHA-256 de vídeo.", observationEvidenceMode);
+        return;
+      }
+      const missingAttestation = [
+        observationNonTechnical,
+        observationNoCoaching,
+        observationFullCycle,
+        observationCausalExplanation,
+      ].find((field) => !field.checked) ?? null;
+      if (!observationNonTechnical.checked
+        || !observationNoCoaching.checked
+        || !observationFullCycle.checked
+        || !observationCausalExplanation.checked) {
+        failHumanObservation("confirme individualmente pessoa não técnica, ausência de coaching, ciclo integral e explicação causal.", missingAttestation);
+        return;
+      }
+      const participantWords = observationParticipantWords.value.trim();
+      if (participantWords.length < 12 || participantWords.length > 1000) {
+        failHumanObservation("registre as palavras da pessoa com conteúdo substantivo entre 12 e 1.000 caracteres.", observationParticipantWords);
+        return;
+      }
+
+      const attestedAtEpochMs = Date.now();
+      if (!Number.isSafeInteger(attestedAtEpochMs) || attestedAtEpochMs < lastProofReceipt.trial.completedAtEpochMs) {
+        failHumanObservation("o horário da atestação é inválido ou anterior ao fim da prova.");
+        return;
+      }
+      const observationId = `tho-${attestedAtEpochMs}-${lastProofReceipt.response.sha256.slice(0, 12)}`;
+      lastHumanObservation = {
+        schema: "theatre-human-observation/v1",
+        observationId,
+        generatedBy: "Theatre Harness one-link human observation form",
+        verifierUrl: canonicalUrl,
+        proofBinding: {
+          receiptSchema: lastProofReceipt.schema,
+          receiptId: lastProofReceipt.receiptId,
+          responseDigestAlgorithm: "SHA-256",
+          responseSha256: lastProofReceipt.response.sha256,
+          videoSha256: lastProofReceipt.video?.status === "linked" ? lastProofReceipt.video.sha256 : null,
+          startedAtEpochMs: lastProofReceipt.trial.startedAtEpochMs,
+          completedAtEpochMs: lastProofReceipt.trial.completedAtEpochMs,
+          elapsedMs: lastProofReceipt.trial.elapsedMs,
+          thresholdMs: lastProofReceipt.trial.thresholdMs,
+        },
+        humanAttestation: {
+          observerRef,
+          environment,
+          evidenceMode,
+          participantNonTechnical: observationNonTechnical.checked,
+          noCoaching: observationNoCoaching.checked,
+          observedFullCycle: observationFullCycle.checked,
+          causalTransitionExplained: observationCausalExplanation.checked,
+          participantWords,
+          attestedAtEpochMs,
+        },
+        privacy: {
+          projectIncluded: false,
+          responseIncluded: false,
+          videoIncluded: false,
+          participantWordsIncluded: true,
+        },
+        claim: humanObservationClaim,
+      };
+      const observationJson = `${JSON.stringify(lastHumanObservation, null, 2)}\n`;
+      const blobUrl = URL.createObjectURL(new Blob([observationJson], { type: "application/json" }));
+      humanObservationDownload.href = blobUrl;
+      humanObservationDownload.download = `${observationId}.json`;
+      humanObservationDownload.click();
+      URL.revokeObjectURL(blobUrl);
+      humanObservationStatus.textContent = "Ficha humana baixada e vinculada ao recibo atual. A declaração continua sendo uma atestação humana, não prova independente.";
+    });
     downloadStateButton.addEventListener("click", () => {
       if (lastPortableState === null) return;
       const blobUrl = URL.createObjectURL(new Blob([lastPortableState.markdown], { type: "text/markdown;charset=utf-8" }));
@@ -1120,6 +1325,7 @@
       downloadProofButton.hidden = true;
       lastProofReceipt = null;
       invalidatePortableState("A resposta mudou. Confira o ciclo novamente para gerar recibo e memória a partir dos mesmos bytes.");
+      invalidateHumanObservation("A resposta mudou. A ficha humana anterior foi invalidada; confira o ciclo novamente e só então registre uma observação real.");
     });
 
     const failProofFiles = (message) => {
