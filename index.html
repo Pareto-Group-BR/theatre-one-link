@@ -335,8 +335,6 @@
             <button id="copy-proof-button" type="button" hidden>Copiar comprovante</button>
             <button id="download-proof-button" class="secondary-action" type="button" hidden>Baixar recibo JSON</button>
             <a id="proof-download" hidden download></a>
-            <button id="download-response-button" class="secondary-action" type="button" hidden>Baixar resposta exata</button>
-            <a id="response-download" hidden download></a>
             <button id="download-state-button" class="secondary-action" type="button" hidden>Baixar memória portátil</button>
             <a id="state-download" hidden download></a>
             <p id="state-export-status" class="privacy-note" role="status" aria-live="polite">Depois de um ciclo válido, a memória canônica poderá ser baixada como Markdown para continuar em outra conversa ou Project.</p>
@@ -539,8 +537,6 @@
     const copyProofButton = document.querySelector("#copy-proof-button");
     const downloadProofButton = document.querySelector("#download-proof-button");
     const proofDownload = document.querySelector("#proof-download");
-    const downloadResponseButton = document.querySelector("#download-response-button");
-    const responseDownload = document.querySelector("#response-download");
     const downloadStateButton = document.querySelector("#download-state-button");
     const stateDownload = document.querySelector("#state-download");
     const stateExportStatus = document.querySelector("#state-export-status");
@@ -601,12 +597,6 @@
     let lastVideoProof = null;
     let lastPortableState = null;
     let lastHumanObservation = null;
-    let lastVerifiedResponse = null;
-
-    const invalidateVerifiedResponse = () => {
-      lastVerifiedResponse = null;
-      downloadResponseButton.hidden = true;
-    };
 
     const resetHumanObservationFields = () => {
       observationObserverRef.value = "";
@@ -788,7 +778,6 @@
       copyProofButton.hidden = true;
       downloadProofButton.hidden = true;
       lastProofReceipt = null;
-      invalidateVerifiedResponse();
       invalidatePortableState("Novo ciclo iniciado. A memória anterior foi descartada; confira a nova resposta antes de baixar.");
       invalidateHumanObservation("Novo ciclo iniciado. Qualquer ficha anterior foi invalidada; só um novo PASS habilita outra observação.");
       proofResult.dataset.status = "idle";
@@ -962,7 +951,6 @@
     };
 
     const verifyCycle = async () => {
-      invalidateVerifiedResponse();
       if (trialStartedAt === null) {
         proofResult.dataset.status = "fail";
         proofResult.textContent = "A prova ainda não começou. Copie o prompt primeiro.";
@@ -1080,13 +1068,6 @@
       downloadProofButton.hidden = false;
       if (passed) {
         prepareHumanObservation();
-        lastVerifiedResponse = {
-          text: output,
-          receiptId: lastProofReceipt.receiptId,
-          sha256: lastProofReceipt.response.sha256,
-          utf8Bytes: lastProofReceipt.response.utf8Bytes,
-        };
-        downloadResponseButton.hidden = false;
       } else {
         invalidateHumanObservation("O ciclo ficou incompleto. A ficha humana só é habilitada depois de um PASS mecânico abaixo de cinco minutos.");
       }
@@ -1229,28 +1210,6 @@
       proofDownload.click();
       URL.revokeObjectURL(blobUrl);
     });
-    downloadResponseButton.addEventListener("click", async () => {
-      if (lastProofReceipt === null || lastProofReceipt.status !== "passed" || lastVerifiedResponse === null) return;
-      const currentDigest = await sha256Hex(lastVerifiedResponse.text);
-      const responseStillCurrent = cycleOutput.value === lastVerifiedResponse.text
-        && lastProofReceipt.receiptId === lastVerifiedResponse.receiptId
-        && lastProofReceipt.response.sha256 === lastVerifiedResponse.sha256
-        && lastProofReceipt.response.utf8Bytes === lastVerifiedResponse.utf8Bytes
-        && currentDigest.hex === lastVerifiedResponse.sha256
-        && currentDigest.byteLength === lastVerifiedResponse.utf8Bytes;
-      if (!responseStillCurrent) {
-        invalidateVerifiedResponse();
-        proofResult.dataset.status = "fail";
-        proofResult.textContent = "Resposta exata não baixada: os bytes ou o recibo mudaram depois do PASS. Confira o ciclo novamente; nenhum arquivo foi emitido.";
-        return;
-      }
-      const blobUrl = URL.createObjectURL(new Blob([lastVerifiedResponse.text], { type: "text/plain;charset=utf-8" }));
-      responseDownload.href = blobUrl;
-      responseDownload.download = `${lastVerifiedResponse.receiptId}-response.txt`;
-      responseDownload.click();
-      URL.revokeObjectURL(blobUrl);
-      proofResult.textContent = `${lastProof}\nResposta exata baixada por gesto explícito; nenhum byte foi normalizado, persistido silenciosamente ou enviado.`;
-    });
     const failHumanObservation = (message, field = null) => {
       lastHumanObservation = null;
       humanObservationStatus.textContent = `FICHA NÃO GERADA — ${message}`;
@@ -1375,7 +1334,6 @@
       copyProofButton.hidden = true;
       downloadProofButton.hidden = true;
       lastProofReceipt = null;
-      invalidateVerifiedResponse();
       invalidatePortableState("A resposta mudou. Confira o ciclo novamente para gerar recibo e memória a partir dos mesmos bytes.");
       invalidateHumanObservation("A resposta mudou. A ficha humana anterior foi invalidada; confira o ciclo novamente e só então registre uma observação real.");
     });
