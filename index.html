@@ -282,7 +282,7 @@
           <li><span class="step-number">1</span><strong>Diga o que quer melhorar</strong><br>Uma frase define o projeto e confirma a vontade do primeiro ciclo.</li>
           <li><span class="step-number">2</span><strong>Escolha Web ou Desktop</strong><br>Um gesto incorpora a Skill inteira e inicia a prova. No Desktop, o prompt já chega preenchido; no Web, ele é copiado.</li>
           <li><span class="step-number">3</span><strong>Envie e veja começar</strong><br>No Desktop, revise e envie. No Web, cole. O Claude usa a frase já confirmada e roda o ciclo sem repetir a pergunta.</li>
-          <li><span class="step-number">4</span><strong>Veja o ciclo</strong><br>Crítico → Roteirista → Personagem, com entregas e evidência.</li>
+          <li><span class="step-number">4</span><strong>Veja por que o ciclo mudou</strong><br>O Claude mostra o achado do Crítico, como ele altera o plano e o que o Personagem executa por causa disso.</li>
         </ol>
       </div>
     </section>
@@ -311,7 +311,8 @@
           <div>
             <strong>O verificador procura:</strong>
             <ul>
-              <li>Crítico → Roteirista → Personagem → Registro, nessa ordem</li>
+              <li>Crítico → transição → Roteirista → transição → Personagem → fio do ciclo → Registro</li>
+              <li>metodologia visível: passado → futuro → presente → memória</li>
               <li>evidência explícita</li>
               <li>bloco <code>## 🌉 Estado do teatro</code></li>
               <li>conclusão em até 5 minutos</li>
@@ -351,6 +352,7 @@
       <h3>1. Identidade e regra de ouro</h3>
       <p>Você está rodando o <strong>Theatre Harness</strong>: um loop de trabalho auto-melhorável com três papéis unificados pela vontade humana. Você é a <strong>Ponte</strong>, não um dos papéis. Coordene cada papel na sua vez, traduza a vontade da pessoa e mantenha a unidade.</p>
       <p><strong>Nunca finja progresso.</strong> Não invente resultado, ação externa, memória ou evidência. Trabalho não executado é pendente ou falha. Algo não verificável deve ser descrito exatamente assim. Um ciclo sem entregável real fica registrado como falha — nunca como vitória.</p>
+      <p><strong>Torne o método observável, sem expor raciocínio privado.</strong> Mostre resumos curtos de achados, decisões, critérios e transições. Não revele chain-of-thought, monólogo interno ou passos ocultos; explique somente o que uma pessoa precisa para entender como passado, futuro e presente mudaram o trabalho.</p>
 
       <h3>2. Os cinco lugares na peça</h3>
       <div class="roles">
@@ -389,17 +391,23 @@
 
       <h3>4. Um ciclo completo</h3>
       <ol>
-        <li><strong>Crítico:</strong> leia a memória disponível e a vontade atual. No ciclo 1, diga honestamente que ainda não há passado para julgar; avalie o contexto dado e formule aprendizados iniciais.</li>
-        <li><strong>Roteirista:</strong> escreva um plano curto, priorizado e executável agora. Cada item precisa de uma condição de pronto. Liste riscos futuros relevantes.</li>
+        <li><strong>Crítico:</strong> leia a memória disponível e a vontade atual. No ciclo 1, diga honestamente que ainda não há passado para julgar; avalie o contexto dado, formule aprendizados iniciais e nomeie o achado que precisa mudar o plano.</li>
+        <li><strong>Transição julgamento → plano:</strong> resuma em uma frase observável por que o achado do Crítico exige determinada prioridade ou condição de pronto.</li>
+        <li><strong>Roteirista:</strong> escreva um plano curto, priorizado e executável agora. Cada item precisa de uma condição de pronto. Declare a estratégia escolhida e sua ligação com o achado; liste riscos futuros relevantes.</li>
+        <li><strong>Transição plano → execução:</strong> diga qual item será materializado agora, em qual artefato, e qual critério mostrará que ficou pronto.</li>
         <li><strong>Personagem:</strong> execute o plano nesta resposta usando arquivos, conectores, busca ou raciocínio disponíveis. Produza o artefato, não apenas uma promessa. Para cada item, registre status e evidência.</li>
-        <li><strong>Ponte:</strong> registre tema, plano, resultados, evidências, falhas e aprendizados no estado do teatro.</li>
+        <li><strong>Ponte:</strong> feche o fio causal do ciclo — vontade humana → achado → estratégia → entrega — e registre tema, plano, resultados, evidências, falhas e aprendizados no estado do teatro.</li>
       </ol>
 
       <h3>5. Contrato de saída</h3>
-      <p>Mostre os quatro blocos abaixo, nesta ordem. O usuário deve conseguir distinguir planejamento de execução e alegação de evidência.</p>
-      <pre>⚖️ Crítico — veredicto e 1–3 aprendizados
-🧭 Roteirista — plano de 2–5 itens, pronto definido e riscos
+      <p>Mostre os blocos abaixo, nesta ordem. O usuário deve acompanhar a metodologia e enxergar como cada etapa altera a seguinte — não apenas ver quatro rótulos.</p>
+      <pre>🎭 Método em ação — Consciência/vontade; Crítico/passado; Roteirista/futuro; Personagem/presente; Ponte/unidade
+⚖️ Crítico — veredicto, 1–3 aprendizados e o achado que muda o ciclo
+🔗 Do julgamento ao plano — por que o achado exige a prioridade ou o critério escolhido
+🧭 Roteirista — estratégia, plano de 2–5 itens, pronto definido e riscos
+🔗 Do plano à execução — o que será materializado agora e como o usuário reconhecerá que ficou pronto
 🎬 Personagem — entregas reais, status e evidência
+🧠 Fio do ciclo — a vontade levou ao achado; o achado mudou a estratégia; a estratégia produziu a entrega
 🌉 Registro — estado/memória que ficou salvo</pre>
       <p>Termine com uma única pergunta: <em>“Quer ajustar a vontade para o próximo ciclo?”</em></p>
 
@@ -879,13 +887,26 @@
       const positions = roleLabels.map((label) => output.indexOf(label));
       const orderedRoles = positions.every((position, index) =>
         position >= 0 && (index === 0 || position > positions[index - 1]));
+      const methodLabels = [
+        "🎭 Método em ação",
+        "⚖️ Crítico",
+        "🔗 Do julgamento ao plano",
+        "🧭 Roteirista",
+        "🔗 Do plano à execução",
+        "🎬 Personagem",
+        "🧠 Fio do ciclo",
+        "🌉 Registro",
+      ];
+      const methodPositions = methodLabels.map((label) => output.indexOf(label));
+      const hasVisibleMethod = methodPositions.every((position, index) =>
+        position >= 0 && (index === 0 || position > methodPositions[index - 1]));
       const hasEvidence = /evid[êe]ncia/i.test(output);
       const hasMemory = /##\s*🌉\s*Estado do teatro/i.test(output);
       const elapsedMs = Math.max(0, completedAt - trialStartedAt);
       const elapsedSeconds = Math.ceil(elapsedMs / 1000);
       const withinFiveMinutes = elapsedMs <= proofThresholdMs;
-      const checks = [orderedRoles, hasEvidence, hasMemory, withinFiveMinutes];
-      const labels = ["papéis em ordem", "evidência", "memória", "até 5 minutos"];
+      const checks = [orderedRoles, hasVisibleMethod, hasEvidence, hasMemory, withinFiveMinutes];
+      const labels = ["papéis em ordem", "metodologia visível", "evidência", "memória", "até 5 minutos"];
       const checklist = labels.map((label, index) => `${checks[index] ? "✓" : "✗"} ${label}`).join(" · ");
       const passed = checks.every(Boolean);
       const responseDigest = await sha256Hex(output);
@@ -914,6 +935,7 @@
         },
         checks: {
           orderedRoles,
+          hasVisibleMethod,
           hasEvidence,
           hasMemory,
           withinFiveMinutes,
@@ -1128,14 +1150,17 @@
         if (!timestampsAreSafe || trial.completedAtEpochMs < trial.startedAtEpochMs || trial.elapsedMs !== trial.completedAtEpochMs - trial.startedAtEpochMs || trial.thresholdMs !== proofThresholdMs) throw new Error("timestamps, duração ou limite de cinco minutos não conferem");
 
         const checks = receipt.checks;
-        const checkValues = checks && [checks.orderedRoles, checks.hasEvidence, checks.hasMemory, checks.withinFiveMinutes];
+        const checkValues = checks && [checks.orderedRoles, checks.hasVisibleMethod, checks.hasEvidence, checks.hasMemory, checks.withinFiveMinutes];
         if (!checkValues || checkValues.some((value) => typeof value !== "boolean")) throw new Error("checks estruturais inválidos");
         if (checks.withinFiveMinutes !== (trial.elapsedMs <= trial.thresholdMs)) throw new Error("o check de tempo contradiz a duração");
         const savedResponse = cycleOutput.value;
         const savedRoleLabels = ["⚖️ Crítico", "🧭 Roteirista", "🎬 Personagem", "🌉 Registro"];
         const savedRolePositions = savedRoleLabels.map((label) => savedResponse.indexOf(label));
+        const savedMethodLabels = ["🎭 Método em ação", "⚖️ Crítico", "🔗 Do julgamento ao plano", "🧭 Roteirista", "🔗 Do plano à execução", "🎬 Personagem", "🧠 Fio do ciclo", "🌉 Registro"];
+        const savedMethodPositions = savedMethodLabels.map((label) => savedResponse.indexOf(label));
         const expectedReceiptChecks = {
           orderedRoles: savedRolePositions.every((position, index) => position >= 0 && (index === 0 || position > savedRolePositions[index - 1])),
+          hasVisibleMethod: savedMethodPositions.every((position, index) => position >= 0 && (index === 0 || position > savedMethodPositions[index - 1])),
           hasEvidence: /evid[êe]ncia/i.test(savedResponse),
           hasMemory: /##\s*🌉\s*Estado do teatro/i.test(savedResponse),
           withinFiveMinutes: trial.elapsedMs <= trial.thresholdMs,
