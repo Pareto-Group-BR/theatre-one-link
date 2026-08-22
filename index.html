@@ -261,6 +261,8 @@
         <label for="project-description">O que você quer melhorar agora?</label>
         <input id="project-description" type="text" autocomplete="off" required aria-describedby="project-help" placeholder="Ex.: reduzir o abandono no onboarding de clientes">
         <small id="project-help">Essa frase vira a descrição do projeto e a vontade humana já confirmada para o primeiro ciclo. O Claude começa sem perguntar de novo.</small>
+        <button id="proof-challenge-button" class="secondary-action" type="button" aria-describedby="project-help proof-challenge-help">Usar desafio da prova</button>
+        <small id="proof-challenge-help">Quer apenas experimentar? Este gesto carrega a tarefa padronizada da prova; você ainda pode editar e o cronômetro só começa no botão do Claude.</small>
         <label for="copy-prompt">Prompt gerado</label>
         <textarea id="copy-prompt" readonly aria-describedby="prompt-help">Preparando o prompt auto-contido com a Skill integral desta página…</textarea>
         <small id="prompt-help">Digite uma frase acima. No Web, a página copia a Skill e abre uma conversa nova. No Desktop, o app abre com a mesma Skill já preenchida para você revisar e enviar.</small><br>
@@ -468,6 +470,7 @@
   <script>
     const button = document.querySelector("#copy-button");
     const desktopButton = document.querySelector("#desktop-button");
+    const proofChallengeButton = document.querySelector("#proof-challenge-button");
     const description = document.querySelector("#project-description");
     const prompt = document.querySelector("#copy-prompt");
     const status = document.querySelector("#copy-status");
@@ -496,6 +499,7 @@
     const claudeNewConversationUrl = "https://claude.ai/new";
     const claudeDesktopConversationUrl = "claude://claude.ai/new";
     const claudeDesktopPromptLimit = 12000;
+    const proofChallenge = "Quero criar uma caça ao tesouro de 15 minutos dentro de casa para surpreender alguém, usando apenas cinco objetos comuns, sem comprar nada. As pistas devem ser divertidas, progressivas e terminar com uma pequena mensagem afetiva.";
     const proofThresholdMs = Number(proofSection.dataset.proofThresholdMs);
     const proofDisclaimer = "Este recibo prova somente a checagem estrutural e temporal local; observação humana e qualidade substantiva não foram verificadas.";
     const storageKey = "theatre-one-link-trial-started-at";
@@ -565,6 +569,15 @@
       desktopButton.disabled = false;
       return true;
     };
+
+    proofChallengeButton.addEventListener("click", () => {
+      description.value = proofChallenge;
+      const challengeReady = updatePrompt();
+      if (challengeReady) {
+        status.textContent = "Desafio padronizado carregado. Revise se quiser; o cronômetro ainda não começou.";
+      }
+      description.focus();
+    });
 
     description.addEventListener("input", () => updatePrompt());
     updatePrompt();
